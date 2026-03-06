@@ -109,7 +109,8 @@
             "pages": [
               "api/canisters/governance",
               "api/canisters/ledger",
-              "api/canisters/sns"
+              "api/canisters/sns",
+              "api/canisters/cmc"
             ]
           },
           {

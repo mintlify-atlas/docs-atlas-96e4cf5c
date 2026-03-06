@@ -1,0 +1,372 @@
+---
+title: "Cycles Minting Canister (CMC)"
+description: "API reference for the NNS Cycles Minting Canister that converts ICP tokens to cycles"
+---
+
+## Overview
+
+The Cycles Minting Canister (CMC) is a core NNS canister responsible for converting ICP tokens into cycles, which are required to power computation on the Internet Computer. It provides two main workflows:
+
+1. **Canister Creation**: Create new canisters by paying with cycles
+2. **Cycle Top-Up**: Convert ICP to cycles and top up existing canisters
+
+The CMC uses the current ICP/XDR exchange rate to determine the conversion rate between ICP and cycles.
+
+## Key Concepts
+
+### Payment Protocol
+
+The CMC follows a two-step payment protocol:
+
+1. **Transfer ICP**: Send ICP tokens to the CMC's account on the ICP Ledger
+2. **Notify**: Call a CMC method (e.g., `notify_top_up`) with the block index to process the payment
+
+This design ensures atomic payment processing and allows for error handling and refunds.
+
+### Exchange Rate
+
+The CMC maintains an ICP/XDR (Special Drawing Rights) exchange rate that determines how many cycles you receive for your ICP payment. This rate is updated regularly based on market conditions.
+
+## API Methods
+
+### Top-Up Operations
+
+#### notify_top_up
+
+Converts ICP to cycles and tops up an existing canister.
+
+<ParamField path="block_index" type="nat64" required>
+  Index of the block on the ICP ledger containing the ICP payment
+</ParamField>
+
+<ParamField path="canister_id" type="principal" required>
+  The canister to receive the cycles
+</ParamField>
+
+**Returns**: `NotifyTopUpResult`
+
+<ResponseField name="Ok" type="Cycles">
+  The amount of cycles sent to the specified canister
+</ResponseField>
+
+<ResponseField name="Err" type="NotifyError">
+  Error details if the operation failed
+</ResponseField>
+
+#### notify_mint_cycles
+
+Mints cycles to a cycles ledger account instead of directly to a canister.
+
+<ParamField path="block_index" type="nat64" required>
+  Index of the ICP payment block
+</ParamField>
+
+<ParamField path="to_subaccount" type="opt blob">
+  Optional subaccount in the cycles ledger
+</ParamField>
+
+<ParamField path="deposit_memo" type="opt blob">
+  Optional memo for the deposit
+</ParamField>
+
+**Returns**: `NotifyMintCyclesResult`
+
+<ResponseField name="Ok" type="NotifyMintCyclesSuccess">
+  Success details including:
+  - `block_index`: Cycles ledger block index
+  - `minted`: Amount of cycles minted
+  - `balance`: New balance of the account
+</ResponseField>
+
+### Canister Creation
+
+#### create_canister
+
+Creates a new canister using cycles attached to the call.
+
+<ParamField path="settings" type="opt CanisterSettings">
+  Optional settings for the new canister (controllers, compute allocation, memory allocation, etc.)
+</ParamField>
+
+<ParamField path="subnet_selection" type="opt SubnetSelection">
+  Instructions for selecting which subnet to create the canister on
+</ParamField>
+
+**Returns**: `CreateCanisterResult`
+
+<ResponseField name="Ok" type="principal">
+  The principal ID of the newly created canister
+</ResponseField>
+
+<ResponseField name="Err" type="CreateCanisterError">
+  Error with refund details if creation failed
+</ResponseField>
+
+#### notify_create_canister
+
+Creates a canister using an ICP payment (two-step protocol).
+
+<ParamField path="block_index" type="nat64" required>
+  Index of the ICP payment block
+</ParamField>
+
+<ParamField path="controller" type="principal" required>
+  The controller of the new canister
+</ParamField>
+
+<ParamField path="subnet_selection" type="opt SubnetSelection">
+  Optional subnet selection criteria
+</ParamField>
+
+<ParamField path="settings" type="opt CanisterSettings">
+  Optional canister settings
+</ParamField>
+
+**Returns**: `NotifyCreateCanisterResult`
+
+### Query Methods
+
+#### get_icp_xdr_conversion_rate
+
+Returns the current ICP/XDR conversion rate with certification.
+
+**Returns**: `IcpXdrConversionRateResponse`
+
+<ResponseField name="data" type="IcpXdrConversionRate">
+  The conversion rate data:
+  - `timestamp_seconds`: When the rate was queried (UNIX epoch)
+  - `xdr_permyriad_per_icp`: XDR per ICP in units of 10,000ths
+</ResponseField>
+
+<ResponseField name="hash_tree" type="blob">
+  CBOR-serialized hash tree for certification
+</ResponseField>
+
+<ResponseField name="certificate" type="blob">
+  System certificate for verification
+</ResponseField>
+
+#### get_average_icp_xdr_conversion_rate
+
+Returns the average ICP/XDR conversion rate over a period.
+
+**Returns**: `IcpXdrConversionRateResponse`
+
+#### get_subnet_types_to_subnets
+
+Returns the mapping of subnet types to subnet principals.
+
+**Returns**: `SubnetTypesToSubnetsResponse`
+
+## Data Types
+
+### CanisterSettings
+
+<ParamField path="controllers" type="opt vec principal">
+  List of principals that control the canister
+</ParamField>
+
+<ParamField path="compute_allocation" type="opt nat">
+  Compute allocation percentage (0-100)
+</ParamField>
+
+<ParamField path="memory_allocation" type="opt nat">
+  Memory allocation in bytes
+</ParamField>
+
+<ParamField path="freezing_threshold" type="opt nat">
+  Freezing threshold in seconds
+</ParamField>
+
+<ParamField path="reserved_cycles_limit" type="opt nat">
+  Maximum cycles that can be reserved
+</ParamField>
+
+<ParamField path="log_visibility" type="opt log_visibility">
+  Who can view canister logs (controllers, public, or allowed_viewers)
+</ParamField>
+
+<ParamField path="wasm_memory_limit" type="opt nat">
+  WebAssembly memory limit
+</ParamField>
+
+### SubnetSelection
+
+Choose how to select a subnet for canister creation:
+
+**Subnet**: Specify a particular subnet by principal
+
+<ParamField path="subnet" type="principal">
+  The specific subnet principal
+</ParamField>
+
+**Filter**: Select a random subnet matching criteria
+
+<ParamField path="subnet_type" type="opt text">
+  The type of subnet (e.g., "application", "system")
+</ParamField>
+
+### NotifyError
+
+Possible errors when processing ICP payments:
+
+- **Refunded**: Payment was refunded (non-retriable)
+  - `reason`: Description of why
+  - `block_index`: Refund block index
+
+- **Processing**: Payment is being processed by another request (retriable)
+
+- **TransactionTooOld**: Payment is too old to process (non-retriable)
+  - Contains oldest valid block index
+
+- **InvalidTransaction**: Payment doesn't follow the protocol (non-retriable)
+
+- **Other**: Generic error with code and message
+
+## Usage Examples
+
+### Top Up a Canister
+
+<Steps>
+  <Step title="Transfer ICP to CMC">
+    First, transfer ICP to the CMC's account on the ICP Ledger:
+
+    ```javascript
+    import { Principal } from "@dfinity/principal";
+    import { IcpLedger } from "@dfinity/ledger-icp";
+
+    const CMC_PRINCIPAL = "rkp4c-7iaaa-aaaaa-aaaca-cai";
+    const MEMO_TOP_UP_CANISTER = 1347768404n;
+    
+    // Transfer 1 ICP (100,000,000 e8s)
+    const blockHeight = await ledger.transfer({
+      to: CMC_PRINCIPAL,
+      amount: 100_000_000n,
+      memo: MEMO_TOP_UP_CANISTER,
+    });
+    ```
+  </Step>
+
+  <Step title="Notify CMC to Process Payment">
+    Call `notify_top_up` with the block index:
+
+    ```javascript
+    import { CMC } from "./cmc_idl";
+
+    const cmc = CMC.create({ canisterId: CMC_PRINCIPAL });
+
+    const result = await cmc.notify_top_up({
+      block_index: blockHeight,
+      canister_id: Principal.fromText("your-canister-id"),
+    });
+
+    if ("Ok" in result) {
+      console.log(`Topped up with ${result.Ok} cycles`);
+    } else {
+      console.error("Top-up failed:", result.Err);
+    }
+    ```
+  </Step>
+</Steps>
+
+### Create a Canister with ICP
+
+```javascript
+// 1. Transfer ICP to CMC
+const MEMO_CREATE_CANISTER = 1095062083n;
+
+const blockHeight = await ledger.transfer({
+  to: CMC_PRINCIPAL,
+  amount: 200_000_000n, // 2 ICP
+  memo: MEMO_CREATE_CANISTER,
+});
+
+// 2. Notify CMC to create canister
+const result = await cmc.notify_create_canister({
+  block_index: blockHeight,
+  controller: Principal.fromText("your-controller-principal"),
+  subnet_selection: null,
+  settings: null,
+});
+
+if ("Ok" in result) {
+  console.log(`Created canister: ${result.Ok.toText()}`);
+}
+```
+
+### Create Canister with Specific Settings
+
+```javascript
+const result = await cmc.create_canister({
+  settings: {
+    controllers: [Principal.fromText("controller-1"), Principal.fromText("controller-2")],
+    compute_allocation: 10n,
+    memory_allocation: 1_000_000_000n, // 1 GB
+    freezing_threshold: 2_592_000n, // 30 days
+    reserved_cycles_limit: null,
+    log_visibility: { controllers: null },
+    wasm_memory_limit: null,
+    wasm_memory_threshold: null,
+    environment_variables: null,
+    log_memory_limit: null,
+  },
+  subnet_selection: {
+    Filter: {
+      subnet_type: "application",
+    },
+  },
+});
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Appropriate Memos">
+    When transferring ICP to the CMC, use the correct memo:
+    - `1347768404` (0x50555054 in hex) for top-ups
+    - `1095062083` (0x41455243 in hex) for canister creation
+    
+    These memos help the CMC identify the intent of your payment.
+  </Accordion>
+
+  <Accordion title="Handle Errors Gracefully">
+    The `NotifyError` variants indicate whether errors are retriable:
+    - **Retriable**: `Processing` - wait and retry
+    - **Non-retriable**: `Refunded`, `TransactionTooOld`, `InvalidTransaction` - don't retry
+    
+    Always check the error type before deciding to retry.
+  </Accordion>
+
+  <Accordion title="Monitor Exchange Rates">
+    The ICP/XDR rate fluctuates. Query `get_icp_xdr_conversion_rate()` before making payments to understand how many cycles you'll receive.
+  </Accordion>
+
+  <Accordion title="Set Freezing Threshold">
+    When creating canisters, consider setting a `freezing_threshold` to ensure your canister won't unexpectedly freeze due to low cycles.
+  </Accordion>
+</AccordionGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="NNS Overview" icon="network-wired" href="/core/nns">
+    Learn about the Network Nervous System
+  </Card>
+  <Card title="ICP Ledger" icon="book" href="/api/canisters/ledger">
+    ICP Ledger canister API
+  </Card>
+  <Card title="Canisters" icon="cube" href="/core/canisters">
+    Understanding canister smart contracts
+  </Card>
+  <Card title="Governance" icon="users" href="/api/canisters/governance">
+    NNS Governance canister API
+  </Card>
+</CardGroup>
+
+## Source Code
+
+The CMC implementation can be found in the IC repository:
+
+- `rs/nns/cmc/src/` - Main CMC implementation
+- `rs/nns/cmc/cmc.did` - Candid interface definition
+- `rs/nns/integration_tests/src/cycles_minting_canister.rs` - Integration tests
