@@ -1,0 +1,153 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "Internet Computer",
+  "projectDescription": "Blockchain protocol implementation for running autonomous serverless cloud functionality at web speed",
+  "theme": "aspen",
+  "primaryColor": "#7c7c7c",
+  "lightColor": "#060606",
+  "darkColor": "#c8c8c8",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Getting Started",
+            "pages": [
+              "getting-started/system-requirements",
+              "getting-started/building",
+              "getting-started/verifying-releases"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/replica",
+              "architecture/consensus",
+              "architecture/execution-environment",
+              "architecture/networking"
+            ]
+          },
+          {
+            "group": "Core Components",
+            "pages": [
+              "core/nns",
+              "core/sns",
+              "core/canisters",
+              "core/crypto",
+              "core/state-management"
+            ]
+          },
+          {
+            "group": "IC-OS",
+            "pages": [
+              "ic-os/overview",
+              "ic-os/guestos",
+              "ic-os/hostos",
+              "ic-os/setupos",
+              "ic-os/building"
+            ]
+          },
+          {
+            "group": "Chain Integration",
+            "pages": [
+              "chain-integration/bitcoin",
+              "chain-integration/ethereum",
+              "chain-integration/ckbtc",
+              "chain-integration/cketh"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/workspace-structure",
+              "development/testing",
+              "development/contributing",
+              "development/security"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core APIs",
+            "pages": [
+              "api/types",
+              "api/interfaces",
+              "api/registry"
+            ]
+          },
+          {
+            "group": "Canisters",
+            "pages": [
+              "api/canisters/governance",
+              "api/canisters/ledger",
+              "api/canisters/sns"
+            ]
+          },
+          {
+            "group": "Networking",
+            "pages": [
+              "api/networking/p2p",
+              "api/networking/http-endpoints",
+              "api/networking/xnet"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Packages",
+        "groups": [
+          {
+            "group": "Published Libraries",
+            "pages": [
+              "packages/overview",
+              "packages/pocket-ic",
+              "packages/icrc-ledger",
+              "packages/cryptography"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Decentralized blockchain protocol with web-speed performance",
+    "Network Nervous System (NNS) for decentralized governance",
+    "Service Nervous System (SNS) for tokenized dApp governance",
+    "Smart contracts (Canisters) with WebAssembly execution",
+    "Chain-key cryptography with threshold signatures",
+    "Multi-chain integration (Bitcoin, Ethereum)",
+    "IC-OS: Specialized operating systems (SetupOS, HostOS, GuestOS)",
+    "Deterministic time slicing for scalable computation",
+    "PocketIC for local canister testing",
+    "ICRC token standards and ledger implementation"
+  ],
+  "publicApiSurface": [
+    "Replica node binary",
+    "Network Nervous System (NNS) governance canister",
+    "Service Nervous System (SNS) framework",
+    "ICP Ledger and ICRC-1 token standard",
+    "Bitcoin integration (ckBTC minter)",
+    "Ethereum integration (ckETH minter)",
+    "Boundary node for HTTP gateway",
+    "Registry canister for network configuration",
+    "Cycles Minting Canister (CMC)",
+    "Consensus protocol implementation",
+    "Cryptographic libraries (BLS12-381, threshold signatures)",
+    "PocketIC testing library",
+    "Canister execution environment",
+    "State machine and state manager",
+    "P2P networking layer"
+  ]
+}
