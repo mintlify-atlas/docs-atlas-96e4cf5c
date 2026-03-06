@@ -1,0 +1,552 @@
+---
+title: "Building IC-OS Images"
+description: "How to build SetupOS, HostOS, and GuestOS images using Bazel"
+---
+
+## Overview
+
+All IC-OS images (SetupOS, HostOS, and GuestOS) are built using Bazel. The build process uses a Docker-based approach to create reproducible disk images that can be deployed on bare metal or virtual machines.
+
+<Info>
+IC-OS images are first created as Docker images and then transformed into "bare-metal" or "virtual-metal" images that can boot outside containerization.
+</Info>
+
+## Prerequisites
+
+### Required Software
+
+Building IC-OS images requires several packages and tools:
+
+<Steps>
+  <Step title="Install Bazel">
+    Follow the official [Bazel installation guide](https://bazel.build/install) for your platform.
+  </Step>
+  
+  <Step title="Install Required Packages">
+    The complete list of required packages is found in:
+    ```
+    ic/ci/container/Dockerfile
+    ```
+    
+    These include:
+    - Docker
+    - Build tools (make, gcc, etc.)
+    - Image manipulation tools
+    - File system utilities
+  </Step>
+</Steps>
+
+### Using Container for Building
+
+<Tip>
+As an alternative to installing all dependencies locally, you can use a pre-configured container environment:
+</Tip>
+
+```bash
+./ci/container/container-run.sh
+```
+
+This script launches a container with all necessary dependencies already configured, providing a consistent build environment.
+
+## Build Targets
+
+Each IC-OS image has multiple build target variations:
+
+<Tabs>
+  <Tab title="SetupOS">
+    - `prod`: Production image (no console access)
+    - `dev`: Development image (console enabled)
+  </Tab>
+  
+  <Tab title="HostOS">
+    - `prod`: Production image (no console access)
+    - `dev`: Development image (console enabled)
+  </Tab>
+  
+  <Tab title="GuestOS">
+    - `prod`: Production image (no console access)
+    - `dev`: Development image (console enabled)
+    - `dev-malicious`: Development image for testing malicious behavior
+    - `recovery`: Recovery image for disaster recovery
+  </Tab>
+</Tabs>
+
+### Production vs Development Images
+
+The key differences between `prod` and `dev` targets:
+
+| Feature | Production (`prod`) | Development (`dev`) |
+|---------|-------------------|--------------------|
+| Console Access | Disabled | Enabled |
+| Root Login | Disabled | Enabled (user: `root`, password: `root`) |
+| Debugging | Minimal | Full debugging support |
+| Use Case | Production deployments | Testing and development |
+
+<Warning>
+Development images should never be used in production environments. They have console access enabled and use default credentials.
+</Warning>
+
+## Building Images
+
+### Basic Build Command
+
+Use the following command pattern to build IC-OS images:
+
+```bash
+bazel build //ic-os/{setupos,hostos,guestos}/envs/<TARGET>/...
+```
+
+### Build Examples
+
+<CodeGroup>
+
+```bash Production GuestOS
+# Build production GuestOS image
+bazel build //ic-os/guestos/envs/prod/...
+```
+
+```bash Development GuestOS
+# Build development GuestOS image
+bazel build //ic-os/guestos/envs/dev/...
+```
+
+```bash Development HostOS
+# Build development HostOS image
+bazel build //ic-os/hostos/envs/dev/...
+```
+
+```bash Production SetupOS
+# Build production SetupOS image
+bazel build //ic-os/setupos/envs/prod/...
+```
+
+```bash All Development Images
+# Build all development images
+bazel build //ic-os/setupos/envs/dev/... \
+            //ic-os/hostos/envs/dev/... \
+            //ic-os/guestos/envs/dev/...
+```
+
+</CodeGroup>
+
+### Build Output Location
+
+All IC-OS image build outputs are stored in the Bazel output directory:
+
+```
+/ic/bazel-bin/ic-os/{setupos,hostos,guestos}/envs/<TARGET>/
+```
+
+<Tip>
+**Example**: After building development GuestOS, the image will be located at:
+```
+/ic/bazel-bin/ic-os/guestos/envs/dev/disk.img
+```
+</Tip>
+
+### Build Artifacts
+
+The build process produces several artifacts:
+
+- `disk.img`: Bootable disk image
+- `update.tar`: Update package for upgrading running nodes
+- `SHA256SUMS`: Checksums for verification
+- Additional metadata files
+
+## Build Process Details
+
+Understanding how IC-OS images are constructed helps with troubleshooting and customization.
+
+### Two-Stage Docker Build
+
+The Docker build process is split into two stages for reproducibility:
+
+<Steps>
+  <Step title="Dockerfile.base">
+    **Base Image Creation**
+    
+    Location: `ic/ic-os/{setupos,hostos,guestos}/context/Dockerfile.base`
+    
+    - Installs all upstream Ubuntu packages
+    - Versions can change as updates are published
+    - CI pipeline builds new base images weekly
+    - Published to [DFINITY Docker Hub](https://hub.docker.com/u/dfinity)
+    
+    <Info>
+    Weekly base image updates ensure security patches are incorporated while maintaining build determinism through pinned versions.
+    </Info>
+  </Step>
+  
+  <Step title="Dockerfile">
+    **Main Image Build**
+    
+    Location: `ic/ic-os/{setupos,hostos,guestos}/context/Dockerfile`
+    
+    - Builds from the published base image
+    - Configures and assembles the disk image
+    - All instructions must be reproducible
+    - Adds IC-specific components and configuration
+  </Step>
+</Steps>
+
+### Image Transformation
+
+After Docker build, the image is transformed for bare-metal/VM use:
+
+<AccordionGroup>
+  <Accordion title="Docker to Disk Image">
+    The Docker container image is converted into a bootable disk image:
+    - Extracts filesystem from Docker layers
+    - Creates partition table
+    - Formats partitions (ext4, vfat)
+    - Installs bootloader (GRUB)
+    - Sets up A/B partition structure
+  </Accordion>
+  
+  <Accordion title="Bootloader Configuration">
+    GRUB bootloader is configured for:
+    - EFI boot
+    - A/B partition switching
+    - Secure boot (for production)
+    - Kernel parameters
+  </Accordion>
+  
+  <Accordion title="Minimal Runtime">
+    The resulting system is minimal:
+    - Only essential systemd services
+    - No unnecessary packages
+    - Read-only root filesystem
+    - Optimized for IC workload
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+All pre-configuration is performed using Docker utilities. The system is actually operational as a Docker container, allowing some development and testing on the Docker image itself.
+</Note>
+
+### Binary Injection
+
+As a caching optimization, IC services and binaries are injected late in the build:
+
+<Steps>
+  <Step title="Rootfs Construction">
+    Base system and operating system components are built first
+  </Step>
+  
+  <Step title="Binary Injection">
+    IC-specific components are added after rootfs is complete:
+    - Replica binary
+    - Orchestrator
+    - IC tools and utilities
+    - Configuration scripts
+  </Step>
+  
+  <Step title="Benefit">
+    This separation allows rebuilding IC components without rebuilding the entire OS image, improving build times during development.
+  </Step>
+</Steps>
+
+The injection configuration is defined in the corresponding `defs.bzl` file for each OS.
+
+## Build Configuration Files
+
+Several configuration files control the build process:
+
+### Package Lists
+
+Packages to install are defined in:
+```
+ic/ic-os/{setupos,hostos,guestos}/context/packages.common
+```
+
+This file lists all Ubuntu packages that should be included in the base image.
+
+### Base Image References
+
+The base image hash is specified in:
+```
+ic/ic-os/{setupos,hostos,guestos}/context/docker-base.<env>
+```
+
+This ensures reproducible builds by pinning to a specific base image version.
+
+### Component Files
+
+IC-specific files and components are enumerated in:
+```
+ic/ic-os/components/{setupos,hostos,guestos}.bzl
+```
+
+These Bazel files list all files that should be included in each OS.
+
+### Bazel Build Macro
+
+The main build logic is in:
+```
+ic/ic-os/defs.bzl
+```
+
+<Tip>
+For a detailed overview of the build process, refer to the `icos_build` Bazel macro in `defs.bzl`.
+</Tip>
+
+## Adding Dependencies
+
+To add a new package to an IC-OS image:
+
+<Steps>
+  <Step title="Update Package List">
+    Add the package name to the appropriate file:
+    ```
+    ic/ic-os/{setupos,hostos,guestos}/context/packages.common
+    ```
+  </Step>
+  
+  <Step title="Commit and Wait for CI">
+    Commit the changes and wait for CI to build and publish the new base image:
+    ```bash
+    git add ic-os/*/context/packages.common
+    git commit -m "Add package: <package-name>"
+    git push
+    ```
+    
+    <Note>
+    The CI pipeline runs weekly to build new base images. You may need to wait for the next scheduled build.
+    </Note>
+  </Step>
+  
+  <Step title="Update Base Image Hash">
+    Once the new base image is published, update the hash reference:
+    ```
+    ic/ic-os/{setupos,hostos,guestos}/context/docker-base.<env>
+    ```
+    
+    The new hash will be available from the CI build output or Docker Hub.
+  </Step>
+  
+  <Step title="Rebuild">
+    Build your IC-OS image with the new package included:
+    ```bash
+    bazel build //ic-os/guestos/envs/dev/...
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Adding packages increases the attack surface and image size. Only add packages that are absolutely necessary.
+</Warning>
+
+## Adding IC-OS Files
+
+To add custom files or components to an IC-OS build:
+
+<Steps>
+  <Step title="Add Files to Components Directory">
+    Place your files in the appropriate location:
+    ```
+    ic/ic-os/components/
+    ```
+    
+    Organize by:
+    - `components/guestos/` - GuestOS-specific files
+    - `components/hostos/` - HostOS-specific files
+    - `components/setupos/` - SetupOS-specific files
+    - `components/common/` - Shared files
+  </Step>
+  
+  <Step title="Enumerate Files in Bazel">
+    Add each file to the corresponding `.bzl` file:
+    ```
+    ic/ic-os/components/{guestos,hostos,setupos}.bzl
+    ```
+    
+    Example entry:
+    ```python
+    filegroup(
+        name = "my_component",
+        srcs = [
+            "path/to/my_file",
+            "path/to/my_script.sh",
+        ],
+    )
+    ```
+  </Step>
+  
+  <Step title="Add Service Files (if needed)">
+    If adding a service, include a systemd service file:
+    ```
+    ic/ic-os/components/*/systemd/my_service.service
+    ```
+  </Step>
+  
+  <Step title="Rebuild">
+    Build the image to include your new files:
+    ```bash
+    bazel build //ic-os/guestos/envs/dev/...
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+For detailed instructions, see the [components README](file:///home/daytona/workspace/source/ic-os/components/README.adoc).
+</Tip>
+
+## Removing IC-OS Files
+
+To remove files from an IC-OS build:
+
+<Steps>
+  <Step title="Remove Files">
+    Delete the files from the `components/` directory
+  </Step>
+  
+  <Step title="Update All .bzl Files">
+    Remove the file enumeration from ALL `.bzl` files that referenced them:
+    - `components/guestos.bzl`
+    - `components/hostos.bzl`
+    - `components/setupos.bzl`
+  </Step>
+  
+  <Step title="Rebuild">
+    Build the image to verify files are removed:
+    ```bash
+    bazel build //ic-os/guestos/envs/dev/...
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting Builds
+
+<AccordionGroup>
+  <Accordion title="Build fails with missing dependencies">
+    **Solution**: Install required packages or use the container build environment:
+    ```bash
+    ./ci/container/container-run.sh
+    ```
+  </Accordion>
+  
+  <Accordion title="Docker base image not found">
+    **Solution**: Wait for CI to publish the base image, or build it locally:
+    ```bash
+    # Build base image locally
+    cd ic/ic-os/guestos/context
+    docker build -f Dockerfile.base -t guestos-base .
+    ```
+  </Accordion>
+  
+  <Accordion title="Bazel cache issues">
+    **Solution**: Clean Bazel cache and rebuild:
+    ```bash
+    bazel clean --expunge
+    bazel build //ic-os/guestos/envs/dev/...
+    ```
+  </Accordion>
+  
+  <Accordion title="Build is very slow">
+    **Solution**: 
+    - Use `bazel build` with `--jobs` flag to control parallelism
+    - Ensure sufficient disk space for Bazel cache
+    - Use container build environment
+    - Consider building only the specific OS you need
+  </Accordion>
+  
+  <Accordion title="Image fails to boot">
+    **Common causes**:
+    - Missing bootloader configuration
+    - Incorrect partition layout
+    - Missing kernel or initrd
+    
+    **Solution**: Check build logs for errors, verify all build steps completed successfully
+  </Accordion>
+</AccordionGroup>
+
+## Testing Built Images
+
+### Testing GuestOS
+
+Run GuestOS image locally with QEMU:
+
+```bash
+# Navigate to build output
+cd /ic/bazel-bin/ic-os/guestos/envs/dev
+
+# Run with QEMU
+qemu-system-x86_64 \
+  -machine type=q35,accel=kvm \
+  -enable-kvm \
+  -nographic \
+  -m 4G \
+  -bios /usr/share/ovmf/OVMF.fd \
+  -device vhost-vsock-pci,guest-cid=3 \
+  -drive file=disk.img,format=raw,if=virtio \
+  -netdev user,id=user.0,hostfwd=tcp::2222-:22 \
+  -device virtio-net,netdev=user.0
+```
+
+<Tip>
+Press `Ctrl-A` followed by `x` to exit QEMU console.
+</Tip>
+
+### Testing SetupOS
+
+Write SetupOS image to USB and test on physical hardware:
+
+```bash
+# Write to USB drive (WARNING: destroys all data on drive)
+sudo dd if=/ic/bazel-bin/ic-os/setupos/envs/dev/disk.img \
+        of=/dev/sdX \
+        bs=4M \
+        status=progress
+sudo sync
+```
+
+### Testing HostOS
+
+HostOS is typically tested as part of the full deployment with GuestOS.
+
+## Build Optimization
+
+### Incremental Builds
+
+Bazel caches build artifacts. To take advantage:
+
+- Keep Bazel output directory (`bazel-bin/`) intact
+- Use `bazel build` instead of `bazel clean` when possible
+- Only clean when necessary (dependency changes, build issues)
+
+### Parallel Builds
+
+Control build parallelism:
+
+```bash
+# Use more cores for faster builds
+bazel build --jobs=16 //ic-os/guestos/envs/dev/...
+
+# Limit for systems with less memory
+bazel build --jobs=4 //ic-os/guestos/envs/dev/...
+```
+
+### Remote Caching
+
+If configured, Bazel can use remote caching to share build artifacts:
+
+```bash
+bazel build --remote_cache=<cache-url> //ic-os/guestos/envs/dev/...
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="GuestOS Details" icon="microchip" href="/ic-os/guestos">
+    Learn about GuestOS components and architecture
+  </Card>
+  <Card title="HostOS Details" icon="server" href="/ic-os/hostos">
+    Understand HostOS responsibilities
+  </Card>
+  <Card title="SetupOS Details" icon="download" href="/ic-os/setupos">
+    Learn about node installation process
+  </Card>
+  <Card title="Components Development" icon="code" href="file:///home/daytona/workspace/source/ic-os/components/README.adoc">
+    Deep dive into adding and modifying components
+  </Card>
+</CardGroup>

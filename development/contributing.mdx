@@ -1,0 +1,410 @@
+---
+title: Contributing
+description: Guidelines for contributing to the Internet Computer Protocol implementation
+---
+
+Thank you for your interest in contributing to the Internet Computer Protocol! This guide covers the process for submitting contributions, understanding CI/CD workflows, and adhering to coding standards.
+
+## Before You Start
+
+<Warning>
+  **Important:** Reach out to us first before contributing a feature or bug fix so we can discuss feasibility and implementation strategies.
+</Warning>
+
+You can engage with the community on the [DFINITY Forum](https://forum.dfinity.org/).
+
+## Contribution License Agreement
+
+All contributors must agree to the terms outlined in:
+
+- [LICENSE](https://github.com/dfinity/ic/blob/master/LICENSE)
+- [Contribution License Agreement (CLA)](https://github.com/dfinity/cla/blob/main/CLA.md)
+
+If this is your first contribution to a DFINITY repository, you'll be prompted to sign the CLA when you submit your pull request.
+
+## Getting Started
+
+### 1. Fork the Repository
+
+<Steps>
+  <Step title="Fork">
+    Fork the [dfinity/ic](https://github.com/dfinity/ic) repository to your GitHub account.
+  </Step>
+  <Step title="Keep Updated">
+    If you already have a fork, ensure it's up to date with the latest changes from the main repository.
+  </Step>
+  <Step title="Clone">
+    Clone your fork locally:
+    ```bash
+    git clone https://github.com/YOUR_USERNAME/ic.git
+    cd ic
+    ```
+  </Step>
+</Steps>
+
+### 2. Set Up Development Environment
+
+#### System Requirements
+
+- **Architecture:** x86-64
+- **Memory:** Minimum 16 GB RAM/SWAP
+- **Disk:** 100 GB available space
+- **OS:** Ubuntu 22.04 or newer
+- **Container Runtime:** [Podman](https://podman.io)
+
+#### Enter Dev Container
+
+```bash
+# Use the provided dev container for consistent environment
+./ci/container/container-run.sh
+```
+
+Alternatively, use the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) VS Code extension.
+
+### 3. Local Testing
+
+Before submitting your PR, run tests locally to avoid long feedback loops:
+
+<Tabs>
+  <Tab title="Quick Check">
+    ```bash
+    # Run linting
+    ./ci/scripts/rust-lint.sh
+
+    # Or run individual linting tools
+    cargo clippy --all-targets --all-features
+    cargo fmt --check
+    ```
+  </Tab>
+  <Tab title="Unit Tests">
+    ```bash
+    # Run tests with Cargo
+    cargo test
+
+    # Run tests for specific package
+    cargo test -p ic-consensus
+    ```
+  </Tab>
+  <Tab title="Bazel Tests">
+    ```bash
+    # Run all tests except system tests
+    bazel test //... --test_tag_filters=-system_test
+
+    # Run specific test target
+    bazel test //rs/consensus:consensus_test
+    ```
+  </Tab>
+</Tabs>
+
+For more detailed testing instructions, see the [HACKING.md](https://github.com/dfinity/ic/blob/master/HACKING.md) document.
+
+## Submitting a Pull Request
+
+### Protected Files
+
+<Warning>
+  For security reasons, external contributors **cannot** modify certain files. PRs that change these files will be closed automatically.
+</Warning>
+
+Refer to `.github/repo_policies/EXTERNAL_CONTRIB_BLACKLIST` for the list of protected files.
+
+### PR Workflow
+
+<Steps>
+  <Step title="Create Branch">
+    Create a feature branch for your changes:
+    ```bash
+    git checkout -b feature/my-feature
+    ```
+  </Step>
+  <Step title="Make Changes">
+    Implement your changes following the coding standards outlined below.
+  </Step>
+  <Step title="Commit Changes">
+    Write clear, descriptive commit messages:
+    ```bash
+    git add .
+    git commit -m "feat: add new consensus optimization"
+    ```
+  </Step>
+  <Step title="Push to Fork">
+    ```bash
+    git push origin feature/my-feature
+    ```
+  </Step>
+  <Step title="Open Pull Request">
+    1. Navigate to your fork on GitHub
+    2. Click "New Pull Request"
+    3. Provide a clear title and description
+    4. Mark the PR as "Ready for Review"
+  </Step>
+</Steps>
+
+### PR Description Template
+
+Provide a comprehensive PR description:
+
+<CodeGroup>
+```markdown PR Description
+## Summary
+
+Brief description of what this PR does.
+
+## Motivation
+
+Why is this change needed? What problem does it solve?
+
+## Changes
+
+- List key changes
+- Include technical details
+- Mention any breaking changes
+
+## Testing
+
+- How was this tested?
+- What test cases were added?
+- Any manual testing steps?
+
+## Related Issues
+
+Fixes #123
+Related to #456
+```
+</CodeGroup>
+
+## CI/CD Process for External Contributors
+
+### Security Restrictions
+
+<Info>
+  **CI does not run automatically** on PRs from external contributors for security reasons.
+</Info>
+
+### How CI Works
+
+<Steps>
+  <Step title="Initial Review">
+    A maintainer will review your PR for security and quality.
+  </Step>
+  <Step title="Manual CI Trigger">
+    After review, a maintainer will manually trigger CI for your PR.
+  </Step>
+  <Step title="CI Notification">
+    You'll receive a comment with a link to the CI run.
+  </Step>
+  <Step title="Results">
+    Once CI completes, results will be reported back to your PR.
+  </Step>
+  <Step title="Subsequent Commits">
+    Any new commits you push will require manual CI triggering again.
+  </Step>
+</Steps>
+
+### CI Pipeline
+
+The CI pipeline runs:
+
+- Code formatting checks (rustfmt)
+- Linting (clippy)
+- Unit tests
+- Integration tests
+- Bazel build verification
+- System tests (for internal changes)
+
+## Coding Standards
+
+### Rust Style Guide
+
+The project uses standard Rust formatting and linting tools:
+
+<AccordionGroup>
+  <Accordion title="Formatting">
+    - Use `rustfmt` with the project's `rustfmt.toml` configuration
+    - Run `cargo fmt` before committing
+    - Line length limit defined in `rustfmt.toml`
+  </Accordion>
+  
+  <Accordion title="Linting">
+    - Use `clippy` with the project's `clippy.toml` configuration
+    - Address all clippy warnings
+    - Run `cargo clippy --all-targets --all-features`
+  </Accordion>
+  
+  <Accordion title="Documentation">
+    - Document all public APIs with doc comments
+    - Include examples in doc comments where appropriate
+    - Add module-level documentation explaining purpose and design
+  </Accordion>
+  
+  <Accordion title="Testing">
+    - Write unit tests for new functionality
+    - Add integration tests for cross-component features
+    - Ensure tests are deterministic and reproducible
+  </Accordion>
+</AccordionGroup>
+
+### Code Organization
+
+- **Keep modules focused** - Each module should have a single, clear purpose
+- **Use appropriate visibility** - Mark items as `pub` only when necessary
+- **Follow naming conventions** - Use snake_case for functions/variables, PascalCase for types
+- **Minimize dependencies** - Only add necessary external crates
+
+### Dependency Management
+
+<Warning>
+  When adding external crate dependencies, follow these rules:
+</Warning>
+
+1. **Verify necessity** - Ensure the crate is truly needed
+   - Check if similar functionality exists in already-imported crates
+   - Confirm the crate is well-maintained and from reputable authors
+
+2. **Maintain consistency** - Use workspace dependencies
+   - Add new crates to `[workspace.dependencies]` in root `Cargo.toml`
+   - Reference with `new-crate = { workspace = true }` in package `Cargo.toml`
+
+3. **Avoid version fragmentation** - When bumping dependencies, update across the entire repository
+
+4. **Keep toolchain updated** - Maintain rust-lang versions for both Bazel and Cargo
+
+<CodeGroup>
+```toml Workspace Dependency (Cargo.toml)
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.28", features = ["full"] }
+```
+
+```toml Package Dependency (rs/consensus/Cargo.toml)
+[dependencies]
+serde = { workspace = true }
+tokio = { workspace = true }
+```
+</CodeGroup>
+
+## Review Process
+
+### What Reviewers Look For
+
+<Checklist>
+  - [ ] Code follows project style guidelines
+  - [ ] Changes are well-tested with appropriate test coverage
+  - [ ] Documentation is updated for API changes
+  - [ ] Commit messages are clear and descriptive
+  - [ ] No unintended changes or debugging code
+  - [ ] Performance implications are considered
+  - [ ] Security implications are addressed
+</Checklist>
+
+### Timeline Expectations
+
+- **Initial review:** Within 1-2 weeks for most PRs
+- **Follow-up reviews:** Within a few days for revisions
+- **Merging:** After all reviewers approve and CI passes
+
+<Note>
+  Large or complex PRs may take longer to review. Consider breaking large changes into smaller, incremental PRs.
+</Note>
+
+### Addressing Review Feedback
+
+1. **Respond to comments** - Acknowledge feedback and explain your approach
+2. **Make requested changes** - Update your code based on reviewer suggestions
+3. **Ask questions** - If feedback is unclear, ask for clarification
+4. **Push updates** - Push new commits to your PR branch (don't force-push unless requested)
+
+## Building the Project
+
+### Quick Build Commands
+
+<Tabs>
+  <Tab title="Full Build">
+    ```bash
+    # Build all IC-OS images in containerized environment
+    ./ci/container/build-ic.sh -i
+
+    # Artifacts located in: artifacts/
+    ```
+  </Tab>
+  <Tab title="Binaries Only">
+    ```bash
+    # Build binaries and canisters
+    ./ci/container/build-ic.sh -b -c
+    ```
+  </Tab>
+  <Tab title="Replica">
+    ```bash
+    # Build replica with Cargo
+    cd rs
+    cargo build --release --bin replica
+    ```
+  </Tab>
+  <Tab title="Bazel">
+    ```bash
+    # Build with Bazel
+    bazel build //rs/replica
+
+    # Build IC-OS images
+    bazel build //ic-os/guestos/envs/dev/...
+    ```
+  </Tab>
+</Tabs>
+
+## Open Source Licensing
+
+All code in the Internet Computer repository is licensed under:
+
+- **Apache 2.0** - Most components
+- **IC Community Source License** - Certain restrictive components (see `licenses/IC-1.0.txt`)
+- **IC Shared Community Source License** - Certain shared components (see `licenses/IC-shared-1.0.txt`)
+
+The more restrictive licenses protect the Intellectual Property of the DFINITY Foundation while enabling community review and verification.
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card title="Forum" icon="comments" href="https://forum.dfinity.org/">
+    Ask questions and discuss ideas
+  </Card>
+  <Card title="HACKING.md" icon="hammer" href="https://github.com/dfinity/ic/blob/master/HACKING.md">
+    Quick reference for common tasks
+  </Card>
+  <Card title="Security Policy" icon="shield" href="/development/security">
+    Report security vulnerabilities
+  </Card>
+  <Card title="Testing Guide" icon="flask" href="/development/testing">
+    Learn about testing infrastructure
+  </Card>
+</CardGroup>
+
+## Community Standards
+
+### Code of Conduct
+
+We expect all contributors to:
+
+- Be respectful and inclusive
+- Provide constructive feedback
+- Focus on what's best for the community
+- Show empathy towards others
+
+### Communication Channels
+
+- **Forum:** [forum.dfinity.org](https://forum.dfinity.org/) - General discussions, questions, and announcements
+- **GitHub Issues:** Bug reports and feature requests
+- **Pull Requests:** Code contributions and technical discussions
+
+## Related Resources
+
+<CardGroup cols={3}>
+  <Card title="Workspace Structure" icon="folder-tree" href="/development/workspace-structure">
+    Understand the monorepo organization
+  </Card>
+  <Card title="Testing" icon="flask" href="/development/testing">
+    Comprehensive testing guide
+  </Card>
+  <Card title="Security" icon="shield" href="/development/security">
+    Security policy and reporting
+  </Card>
+</CardGroup>

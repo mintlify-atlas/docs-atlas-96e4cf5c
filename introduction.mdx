@@ -1,0 +1,118 @@
+---
+title: "Introduction"
+description: "The world's first blockchain that runs at web speed and can increase its capacity without bound"
+---
+
+<img
+  className="block dark:hidden"
+  src="https://media.brand.dev/88a6a302-1285-4b4a-9dca-8f59e7a4fce2.svg"
+  alt="Internet Computer Logo"
+/>
+<img
+  className="hidden dark:block"
+  src="https://media.brand.dev/88a6a302-1285-4b4a-9dca-8f59e7a4fce2.svg"
+  alt="Internet Computer Logo"
+/>
+
+## What is the Internet Computer?
+
+The Internet Computer is a decentralized blockchain protocol that enables autonomous serverless cloud functionality at web speed. Like the Internet (which is composed of many machines adhering to TCP/IP protocol) and blockchain protocols (such as Bitcoin and Ethereum), the Internet Computer is built on a novel consensus mechanism and cryptographic protocols.
+
+The Internet Computer blockchain runs on nodes installed in independent data centers around the world. These nodes are organized into subnet blockchains, which can host canisters — the Internet Computer's version of smart contracts. Canisters are computational units that bundle together code and state, running concurrently and communicating asynchronously.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Web-Speed Performance" icon="bolt">
+    Process transactions and serve web content at speeds comparable to traditional cloud services
+  </Card>
+  <Card title="Unbounded Scalability" icon="chart-line">
+    Scale capacity by adding new subnet blockchains without compromising decentralization
+  </Card>
+  <Card title="Chain-Key Cryptography" icon="key">
+    Novel cryptographic protocols including threshold signatures and non-interactive distributed key generation
+  </Card>
+  <Card title="Decentralized Governance" icon="users">
+    Network Nervous System (NNS) enables token holder governance of the entire protocol
+  </Card>
+  <Card title="Multi-Chain Integration" icon="link">
+    Native Bitcoin and Ethereum integration through chain-key signatures
+  </Card>
+  <Card title="Canister Smart Contracts" icon="cube">
+    WebAssembly-based smart contracts that can serve web content and store unlimited data
+  </Card>
+</CardGroup>
+
+## Architecture Overview
+
+The Internet Computer is built on several layers:
+
+**Replica Software** — The core client software that runs on every node, implementing the consensus protocol, execution environment, and state management.
+
+**Network Nervous System (NNS)** — A decentralized governance system that controls the network through proposals and voting by ICP token holders.
+
+**Subnets** — Independent blockchains that run in parallel, each hosting a subset of canisters. New subnets can be created to scale capacity.
+
+**Canisters** — Smart contracts that bundle code and state, with the ability to hold tokens, serve web content, and communicate with other canisters.
+
+## Getting Started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get the replica running locally in minutes
+  </Card>
+  <Card title="Building from Source" icon="hammer" href="/getting-started/building">
+    Build the Internet Computer replica from source code
+  </Card>
+  <Card title="Architecture Guide" icon="sitemap" href="/architecture/overview">
+    Understand the system architecture and design
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/types">
+    Explore the core APIs and interfaces
+  </Card>
+</CardGroup>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/dfinity/ic">
+    View the source code and contribute
+  </Card>
+  <Card title="Developer Forum" icon="comments" href="https://forum.dfinity.org">
+    Join the community discussions
+  </Card>
+  <Card title="Dashboard" icon="chart-mixed" href="https://dashboard.internetcomputer.org">
+    Monitor network metrics and statistics
+  </Card>
+  <Card title="DFINITY Foundation" icon="globe" href="https://dfinity.org">
+    Learn about the foundation behind the Internet Computer
+  </Card>
+</CardGroup>
+
+## Who Should Use This Repository?
+
+<AccordionGroup>
+  <Accordion title="Systems Engineers & Cryptographers">
+    If you want to understand how the Internet Computer works under the hood by examining the source code and building it locally, this repository provides the complete implementation of the replica software.
+  </Accordion>
+  
+  <Accordion title="Protocol Researchers">
+    Study the implementation of novel consensus mechanisms, chain-key cryptography, and the Network Nervous System governance protocol.
+  </Accordion>
+  
+  <Accordion title="Node Providers">
+    Learn how to run and maintain Internet Computer nodes that participate in the network. The repository includes IC-OS operating system images used by production nodes.
+  </Accordion>
+  
+  <Accordion title="SDK & Tool Developers">
+    Build new SDKs, oracles, wallets, or tools that interact with the Internet Computer protocol at a low level.
+  </Accordion>
+  
+  <Accordion title="Contributors">
+    Contribute improvements to the core protocol implementation. See our [contributing guide](/development/contributing) for details.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  If you're an application developer looking to build dApps on the Internet Computer, you should use the [Canister SDK](https://internetcomputer.org/docs/current/developer-docs/getting-started/install/) instead, which provides a lightweight development environment optimized for canister development.
+</Note>

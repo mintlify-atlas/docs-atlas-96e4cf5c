@@ -1,0 +1,712 @@
+---
+title: "SNS Canisters"
+description: "API reference for Service Nervous System (SNS) canisters including governance, swap, and root canisters"
+---
+
+# SNS Canisters
+
+Service Nervous Systems (SNS) are algorithmic DAOs that enable decentralized governance of dapps on the Internet Computer. An SNS consists of multiple canisters working together to provide governance, token management, and decentralization.
+
+## Overview
+
+An SNS deployment includes:
+
+- **Governance Canister**: Manages proposals, neurons, and voting
+- **Ledger Canister**: ICRC-1 token ledger for the SNS token
+- **Root Canister**: Orchestrates upgrades and canister management
+- **Swap Canister**: Conducts decentralization swap to distribute tokens
+- **Index Canister**: Indexes token transactions for efficient queries
+- **Archive Canisters**: Store historical transaction data
+
+## SNS Governance Canister
+
+The SNS Governance canister is similar to NNS Governance but customized for individual DAOs.
+
+### Core Features
+
+- Neuron management with staking and voting
+- Proposal submission and voting
+- Configurable governance parameters
+- Voting rewards distribution
+- Treasury management
+- Automatic SNS upgrades
+
+### Key Methods
+
+#### manage_neuron
+
+Manage an SNS neuron.
+
+<ParamField path="subaccount" type="blob" required>
+  The neuron's subaccount (32 bytes)
+</ParamField>
+
+<ParamField path="command" type="Command">
+  The operation to perform:
+  - `Split`: Split neuron into two
+  - `Follow`: Set followees on a function
+  - `SetFollowing`: Set multiple followees
+  - `DisburseMaturity`: Convert maturity to tokens
+  - `ClaimOrRefresh`: Claim or refresh neuron
+  - `Configure`: Change neuron settings
+  - `RegisterVote`: Vote on proposal
+  - `MakeProposal`: Submit proposal
+  - `StakeMaturity`: Stake maturity for voting power
+  - `AddNeuronPermissions`: Grant permissions to principals
+  - `RemoveNeuronPermissions`: Revoke permissions
+  - `MergeMaturity`: Merge maturity into stake
+  - `Disburse`: Withdraw tokens
+</ParamField>
+
+<ResponseField name="command" type="Command_1">
+  Result of the command execution
+</ResponseField>
+
+#### list_neurons
+
+Query neurons in the SNS.
+
+<ParamField path="of_principal" type="principal">
+  Filter neurons by principal (controller or with permissions)
+</ParamField>
+
+<ParamField path="limit" type="nat32" required>
+  Maximum neurons to return
+</ParamField>
+
+<ParamField path="start_page_at" type="NeuronId">
+  Starting neuron ID for pagination
+</ParamField>
+
+<ResponseField name="neurons" type="vec Neuron">
+  List of neurons matching the filters
+</ResponseField>
+
+#### list_proposals
+
+Query proposals with filters.
+
+<ParamField path="limit" type="nat32" required>
+  Maximum proposals to return
+</ParamField>
+
+<ParamField path="before_proposal" type="ProposalId">
+  Return proposals before this ID
+</ParamField>
+
+<ParamField path="exclude_type" type="vec nat64">
+  Exclude proposals of these function IDs
+</ParamField>
+
+<ParamField path="include_status" type="vec int32">
+  Filter by status: 1=Open, 2=Rejected, 3=Adopted, 4=Executed, 5=Failed
+</ParamField>
+
+<ParamField path="include_reward_status" type="vec int32">
+  Filter by reward eligibility
+</ParamField>
+
+<ParamField path="include_topics" type="vec TopicSelector">
+  Filter by proposal topics
+</ParamField>
+
+<ResponseField name="proposals" type="vec ProposalData">
+  List of proposals matching filters
+</ResponseField>
+
+<ResponseField name="include_ballots_by_caller" type="bool">
+  Whether ballots by caller are included
+</ResponseField>
+
+#### get_proposal
+
+Get details of a specific proposal.
+
+<ParamField path="proposal_id" type="ProposalId" required>
+  The proposal ID to query
+</ParamField>
+
+<ResponseField name="result" type="Result_1">
+  - `Proposal`: Full proposal data
+  - `Error`: Error if not found
+</ResponseField>
+
+#### get_nervous_system_parameters
+
+Get current governance parameters.
+
+<ResponseField name="parameters" type="NervousSystemParameters">
+  Current governance configuration including:
+  - Neuron minimum stake
+  - Dissolve delay limits
+  - Voting period durations
+  - Proposal rejection costs
+  - Voting rewards parameters
+  - Max number of neurons
+</ResponseField>
+
+#### get_metadata
+
+Get SNS metadata.
+
+<ResponseField name="url" type="text">
+  Project URL
+</ResponseField>
+
+<ResponseField name="logo" type="text">
+  Logo image (base64 or URL)
+</ResponseField>
+
+<ResponseField name="name" type="text">
+  SNS name
+</ResponseField>
+
+<ResponseField name="description" type="text">
+  SNS description
+</ResponseField>
+
+#### list_nervous_system_functions
+
+List all available proposal functions.
+
+<ResponseField name="functions" type="vec NervousSystemFunction">
+  List of native and custom proposal functions
+</ResponseField>
+
+<ResponseField name="reserved_ids" type="vec nat64">
+  Reserved function IDs
+</ResponseField>
+
+#### get_metrics
+
+Get governance metrics.
+
+<ParamField path="time_window_seconds" type="nat64">
+  Time window for recent metrics
+</ParamField>
+
+<ResponseField name="result" type="GetMetricsResult">
+  Comprehensive metrics including:
+  - Number of recent proposals
+  - Treasury balances
+  - Total voting power
+  - Neuron statistics
+</ResponseField>
+
+### SNS Proposal Actions
+
+SNS proposals can execute various actions:
+
+**Native Actions:**
+- `ManageNervousSystemParameters`: Update governance parameters
+- `AddGenericNervousSystemFunction`: Add custom proposal function
+- `RemoveGenericNervousSystemFunction`: Remove custom function
+- `UpgradeSnsToNextVersion`: Upgrade SNS canisters
+- `RegisterDappCanisters`: Register dapp canisters
+- `DeregisterDappCanisters`: Deregister dapp canisters
+- `TransferSnsTreasuryFunds`: Transfer from treasury
+- `UpgradeSnsControlledCanister`: Upgrade dapp canister
+- `ManageDappCanisterSettings`: Update dapp settings
+- `MintSnsTokens`: Mint new tokens
+- `ManageSnsMetadata`: Update SNS metadata
+- `ManageLedgerParameters`: Update ledger parameters
+- `Motion`: Non-executable text proposal
+
+**Custom Actions:**
+SNS can define custom proposal functions that call specific canister methods.
+
+### SNS Neuron Structure
+
+<ResponseField name="id" type="NeuronId">
+  Unique neuron identifier (blob/subaccount)
+</ResponseField>
+
+<ResponseField name="permissions" type="vec NeuronPermission">
+  List of principals with their permission types:
+  - Vote: Can vote on proposals
+  - Submit proposals: Can submit proposals
+  - Manage principals: Can add/remove permissions
+  - Manage voting permission: Can grant/revoke vote permission
+  - Disburse: Can disburse neuron
+  - Split: Can split neuron
+  - Merge maturity: Can merge maturity
+  - Disburse maturity: Can disburse maturity
+  - Stake maturity: Can stake maturity
+  - Change auto-stake: Can change auto-stake setting
+</ResponseField>
+
+<ResponseField name="cached_neuron_stake_e8s" type="nat64">
+  Staked token amount in e8s
+</ResponseField>
+
+<ResponseField name="maturity_e8s_equivalent" type="nat64">
+  Accumulated maturity from voting rewards
+</ResponseField>
+
+<ResponseField name="staked_maturity_e8s_equivalent" type="nat64">
+  Maturity that has been staked
+</ResponseField>
+
+<ResponseField name="neuron_fees_e8s" type="nat64">
+  Accumulated fees
+</ResponseField>
+
+<ResponseField name="dissolve_state" type="DissolveState">
+  - `DissolveDelaySeconds`: Not dissolving
+  - `WhenDissolvedTimestampSeconds`: Dissolving
+</ResponseField>
+
+<ResponseField name="aging_since_timestamp_seconds" type="nat64">
+  When neuron started aging
+</ResponseField>
+
+<ResponseField name="voting_power_percentage_multiplier" type="nat64">
+  Voting power multiplier (100 = 1x)
+</ResponseField>
+
+<ResponseField name="vesting_period_seconds" type="nat64">
+  Vesting period for swap neurons
+</ResponseField>
+
+<ResponseField name="followees" type="vec record { nat64; Followees }">
+  Map of function ID to followees
+</ResponseField>
+
+<ResponseField name="disburse_maturity_in_progress" type="vec DisburseMaturityInProgress">
+  Pending maturity disbursements (7 day delay)
+</ResponseField>
+
+### SNS Topics
+
+Proposals are categorized by topic:
+
+- **Governance**: Governance upgrades
+- **SnsFrameworkManagement**: SNS framework changes
+- **DappCanisterManagement**: Dapp canister operations
+- **ApplicationBusinessLogic**: Custom business logic
+- **DaoCommunitySettings**: Community settings
+- **TreasuryAssetManagement**: Treasury operations
+- **CriticalDappOperations**: Critical dapp operations
+
+## SNS Swap Canister
+
+The Swap canister conducts the decentralization sale to distribute SNS tokens to participants.
+
+### Swap Lifecycle
+
+1. **Pending**: Swap is created but not yet open
+2. **Open**: Accepting ICP contributions
+3. **Committed**: Swap succeeded, finalizing
+4. **Aborted**: Swap failed, refunding participants
+
+### Key Methods
+
+#### get_state
+
+Get comprehensive swap state.
+
+<ResponseField name="swap" type="Swap">
+  Complete swap state including:
+  - Lifecycle state
+  - Parameters (min/max ICP, duration, etc.)
+  - Current participation amounts
+  - Buyer states
+  - Neuron recipes
+</ResponseField>
+
+<ResponseField name="derived" type="DerivedState">
+  Derived information:
+  - SNS tokens per ICP
+  - Total ICP raised
+  - Participant counts
+  - Direct vs Neurons' Fund participation
+</ResponseField>
+
+#### get_buyer_state
+
+Get participation info for a buyer.
+
+<ParamField path="principal_id" type="principal">
+  The participant's principal
+</ParamField>
+
+<ResponseField name="buyer_state" type="BuyerState">
+  - Amount of ICP contributed
+  - Whether neuron recipes were created
+</ResponseField>
+
+#### new_sale_ticket
+
+Create a participation ticket (before sending ICP).
+
+<ParamField path="amount_icp_e8s" type="nat64" required>
+  Amount of ICP to contribute in e8s
+</ParamField>
+
+<ParamField path="subaccount" type="blob">
+  Subaccount for contribution
+</ParamField>
+
+<ResponseField name="result" type="Result_2">
+  - `Ok`: Ticket with transfer instructions
+  - `Err`: Error with invalid amount or existing ticket
+</ResponseField>
+
+#### get_sale_parameters
+
+Get swap parameters.
+
+<ResponseField name="params" type="Params">
+  Swap parameters:
+  - `min_participants`: Minimum participant count
+  - `min_icp_e8s`: Minimum total ICP
+  - `max_icp_e8s`: Maximum total ICP
+  - `min_participant_icp_e8s`: Min per participant
+  - `max_participant_icp_e8s`: Max per participant
+  - `swap_due_timestamp_seconds`: Swap deadline
+  - `sns_token_e8s`: SNS tokens for sale
+  - `neuron_basket_construction_parameters`: Neuron creation settings
+  - Neurons' Fund participation parameters
+</ResponseField>
+
+#### get_derived_state
+
+Get derived swap statistics.
+
+<ResponseField name="buyer_total_icp_e8s" type="nat64">
+  Total ICP contributed
+</ResponseField>
+
+<ResponseField name="sns_tokens_per_icp" type="float64">
+  Exchange rate (SNS tokens per ICP)
+</ResponseField>
+
+<ResponseField name="direct_participant_count" type="nat64">
+  Number of direct participants
+</ResponseField>
+
+<ResponseField name="direct_participation_icp_e8s" type="nat64">
+  ICP from direct participants
+</ResponseField>
+
+<ResponseField name="neurons_fund_participation_icp_e8s" type="nat64">
+  ICP from Neurons' Fund
+</ResponseField>
+
+<ResponseField name="cf_participant_count" type="nat64">
+  Number of Neurons' Fund participants
+</ResponseField>
+
+#### refresh_buyer_tokens
+
+Trigger token distribution to a participant (after swap commitment).
+
+<ParamField path="buyer" type="text" required>
+  Participant principal as text
+</ParamField>
+
+<ResponseField name="result" type="variant">
+  Result of token refresh operation
+</ResponseField>
+
+#### list_direct_participants
+
+List direct swap participants.
+
+<ParamField path="limit" type="nat32">
+  Max participants to return
+</ParamField>
+
+<ParamField path="offset" type="nat32">
+  Pagination offset
+</ParamField>
+
+<ResponseField name="participants" type="vec Participant">
+  List of participants with their contributions
+</ResponseField>
+
+### Swap Participation Flow
+
+1. Call `new_sale_ticket` to get participation instructions
+2. Transfer ICP to the specified subaccount on ICP ledger
+3. Swap automatically detects the transfer
+4. When swap commits, neurons are created automatically
+5. Call `refresh_buyer_tokens` if needed to claim neurons
+
+## SNS Root Canister
+
+The Root canister manages the SNS canisters and coordinates upgrades.
+
+### Key Methods
+
+#### list_sns_canisters
+
+Get all SNS canister IDs.
+
+<ResponseField name="root" type="principal">
+  Root canister ID
+</ResponseField>
+
+<ResponseField name="governance" type="principal">
+  Governance canister ID
+</ResponseField>
+
+<ResponseField name="ledger" type="principal">
+  Ledger canister ID
+</ResponseField>
+
+<ResponseField name="swap" type="principal">
+  Swap canister ID
+</ResponseField>
+
+<ResponseField name="index" type="principal">
+  Index canister ID
+</ResponseField>
+
+<ResponseField name="dapps" type="vec principal">
+  Registered dapp canister IDs
+</ResponseField>
+
+<ResponseField name="archives" type="vec principal">
+  Archive canister IDs
+</ResponseField>
+
+<ResponseField name="extensions" type="Extensions">
+  Extension canister IDs (if any)
+</ResponseField>
+
+#### get_sns_canisters_summary
+
+Get status of all SNS canisters.
+
+<ParamField path="update_canister_list" type="bool">
+  Whether to refresh the canister list first
+</ParamField>
+
+<ResponseField name="root" type="CanisterSummary">
+  Root canister status
+</ResponseField>
+
+<ResponseField name="governance" type="CanisterSummary">
+  Governance canister status
+</ResponseField>
+
+<ResponseField name="ledger" type="CanisterSummary">
+  Ledger canister status
+</ResponseField>
+
+<ResponseField name="swap" type="CanisterSummary">
+  Swap canister status
+</ResponseField>
+
+<ResponseField name="index" type="CanisterSummary">
+  Index canister status
+</ResponseField>
+
+<ResponseField name="dapps" type="vec CanisterSummary">
+  Dapp canister statuses
+</ResponseField>
+
+<ResponseField name="archives" type="vec CanisterSummary">
+  Archive canister statuses
+</ResponseField>
+
+Each CanisterSummary includes:
+- Canister ID
+- Status (running, stopping, stopped)
+- Memory size
+- Cycles balance
+- Controller principals
+- Module hash
+
+#### register_dapp_canisters
+
+Register dapp canisters with the SNS (called via governance proposal).
+
+<ParamField path="canister_ids" type="vec principal" required>
+  Dapp canister IDs to register
+</ParamField>
+
+#### set_dapp_controllers
+
+Update dapp canister controllers (called via governance proposal).
+
+<ParamField path="canister_ids" type="RegisterDappCanistersRequest">
+  Dapp canisters to update
+</ParamField>
+
+<ParamField path="controller_principal_ids" type="vec principal" required>
+  New controller principals
+</ParamField>
+
+<ResponseField name="failed_updates" type="vec FailedUpdate">
+  List of canisters that failed to update
+</ResponseField>
+
+## SNS Deployment Architecture
+
+### Canister Roles
+
+**Governance Canister**
+- Controls the Root canister
+- Manages proposals and voting
+- Holds treasury funds
+- Executes approved proposals
+
+**Root Canister**
+- Controls Ledger, Swap, and dapp canisters
+- Coordinates SNS upgrades
+- Manages dapp canister registration
+
+**Ledger Canister**
+- Controlled by Root
+- Implements ICRC-1/ICRC-2 standards
+- Manages SNS token transfers
+
+**Swap Canister**
+- Controlled by NNS (during swap), then Root
+- Conducts decentralization sale
+- Creates initial neurons
+
+**Dapp Canisters**
+- Controlled by Root (after decentralization)
+- The actual application canisters
+- Upgradeable via governance proposals
+
+### Treasury Management
+
+SNS Governance can manage multiple treasuries:
+
+**SNS Treasury** (Treasury 1)
+- Holds SNS tokens
+- Funded from swap or minting
+- Controlled by governance
+
+**ICP Treasury** (Treasury 2)
+- Can hold ICP tokens
+- For diversification or operations
+- Requires manual setup
+
+Transfer from treasury using `TransferSnsTreasuryFunds` proposal action.
+
+## Best Practices
+
+### For SNS DAO Members
+
+1. **Participate in Governance**: Regularly vote or set followees
+2. **Understand Parameters**: Review nervous system parameters
+3. **Monitor Proposals**: Check proposals before voting deadline
+4. **Manage Neurons**: Optimize dissolve delay for voting power
+5. **Use Maturity**: Decide whether to stake, disburse, or merge maturity
+
+### For SNS Developers
+
+1. **Proposal Design**: Design clear, atomic proposals
+2. **Custom Functions**: Define custom proposal functions for dapp operations
+3. **Test Thoroughly**: Test proposals in testnet before mainnet
+4. **Monitor Metrics**: Track governance metrics and participation
+5. **Upgrade Planning**: Follow SNS upgrade procedures carefully
+
+### For Swap Participants
+
+1. **Verify Parameters**: Check min/max ICP, token amount, duration
+2. **Use Tickets**: Always use `new_sale_ticket` before transferring
+3. **Transfer Quickly**: Complete transfer before ticket expires
+4. **Save Receipts**: Keep block indices of ICP transfers
+5. **Claim Neurons**: Call `refresh_buyer_tokens` if neurons don't appear
+
+## Examples
+
+### Voting on SNS Proposal
+
+```javascript
+const result = await snsGovernance.manage_neuron({
+  subaccount: neuronSubaccount,
+  command: [{
+    RegisterVote: {
+      proposal: [{ id: proposalId }],
+      vote: 1 // Yes
+    }
+  }]
+});
+```
+
+### Participating in SNS Swap
+
+```javascript
+// Step 1: Create ticket
+const ticketResult = await snsSwap.new_sale_ticket({
+  amount_icp_e8s: 100_000_000n, // 1 ICP
+  subaccount: []
+});
+
+if ('Err' in ticketResult) {
+  throw new Error('Failed to create ticket');
+}
+
+const ticket = ticketResult.Ok;
+
+// Step 2: Transfer ICP to swap subaccount
+await icpLedger.icrc1_transfer({
+  to: {
+    owner: swapCanisterId,
+    subaccount: [ticket.subaccount]
+  },
+  amount: 100_000_000n,
+  memo: [ticket.memo]
+});
+
+// Step 3: Wait for swap to commit, then claim neurons
+await snsSwap.refresh_buyer_tokens({
+  buyer: myPrincipal.toString()
+});
+```
+
+### Querying SNS Metrics
+
+```javascript
+const metricsResult = await snsGovernance.get_metrics({
+  time_window_seconds: [86400n] // Last 24 hours
+});
+
+if ('Ok' in metricsResult) {
+  const metrics = metricsResult.Ok;
+  console.log('Recent proposals:', metrics.num_recently_submitted_proposals);
+  
+  if (metrics.treasury_metrics) {
+    for (const treasury of metrics.treasury_metrics) {
+      console.log(`${treasury.name}: ${treasury.amount_e8s} e8s`);
+    }
+  }
+}
+```
+
+### Creating SNS Proposal
+
+```javascript
+const result = await snsGovernance.manage_neuron({
+  subaccount: neuronSubaccount,
+  command: [{
+    MakeProposal: {
+      url: 'https://forum.example.com/proposal-123',
+      title: 'Upgrade Dapp Canister',
+      summary: 'Upgrade the main dapp canister to version 2.0',
+      action: [{
+        UpgradeSnsControlledCanister: {
+          canister_id: [dappCanisterId],
+          new_canister_wasm: wasmBytes,
+          canister_upgrade_arg: [encodeArgs(...)],
+          mode: [1] // Upgrade
+        }
+      }]
+    }
+  }]
+});
+```
+
+## See Also
+
+- [NNS Governance API](/api/canisters/governance)
+- [ICP Ledger API](/api/canisters/ledger)
+- [SNS Documentation](https://internetcomputer.org/docs/current/developer-docs/daos/sns/)
+- [SNS Launch Guide](https://internetcomputer.org/docs/current/developer-docs/daos/sns/launching/)

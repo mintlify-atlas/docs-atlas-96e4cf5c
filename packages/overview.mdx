@@ -1,0 +1,126 @@
+---
+title: Published Packages Overview
+description: Overview of published Rust crates and npm packages from the Internet Computer repository
+---
+
+The Internet Computer repository publishes a collection of high-quality packages to [crates.io](https://crates.io) (Rust) and [npmjs.com](https://npmjs.com) (JavaScript/TypeScript). These packages provide essential functionality for building applications on the Internet Computer platform.
+
+## Purpose
+
+The `packages/` directory contains standalone libraries that:
+
+- Can be used independently in your projects
+- Follow semantic versioning and maintain changelogs
+- Are properly licensed (Apache 2.0)
+- Depend only on other published packages or code within the packages directory
+- Are maintained by designated teams in the IC codebase
+
+<Note>
+Packages in this directory can depend on one another and other published code, but not on any other code in the IC repository.
+</Note>
+
+## Categories
+
+### Testing Tools
+
+- **[PocketIC](/packages/pocket-ic)** - A comprehensive canister testing library for Rust that provides a local testing environment for Internet Computer smart contracts
+
+### ICRC Token Standards
+
+- **[ICRC Ledger Types](/packages/icrc-ledger)** - Type definitions for the ICRC-1 fungible token standard
+- **ICRC Ledger Client** - Client library for interacting with ICRC-1 ledgers from canister code
+- **ICRC Ledger Agent** - Agent library for interacting with ICRC-1 ledgers from applications
+- **ICRC Ledger Client CDK** - CDK-specific utilities for ICRC-1 ledger interactions
+- **ICRC CBOR** - CBOR encoding/decoding support for ICRC types
+
+### Cryptography
+
+- **[ic-ed25519](/packages/cryptography)** - Ed25519 signature creation and verification
+- **[ic-secp256k1](/packages/cryptography)** - ECDSA and Schnorr signatures over secp256k1
+- **[ic-secp256r1](/packages/cryptography)** - ECDSA signatures over secp256r1 (P-256)
+- **[ic-sha3](/packages/cryptography)** - SHA-3 and Keccak hashing utilities
+- **[ic-signature-verification](/packages/cryptography)** - Multi-signature verification utilities including canister signatures
+- **ic-pub-key** - Public key handling utilities
+- **ic-hpke** - Hybrid Public Key Encryption (HPKE) implementation
+
+### Core Utilities
+
+- **ic-error-types** - Common error types used across IC packages
+- **ic-http-types** - HTTP request/response types for the IC
+- **ic-ethereum-types** - Ethereum-compatible type definitions
+- **ic-ledger-hash-of** - Hashing utilities for ledger operations
+- **ic-heap-bytes** - Memory-efficient byte handling
+- **ic-heap-bytes-derive** - Derive macros for heap byte utilities
+- **ic-metrics-assert** - Testing utilities for metrics
+- **ic-dummy-getrandom-for-wasm** - Random number generation polyfill for WASM
+
+### Logging
+
+- **canlog** - Structured logging for canisters
+- **canlog_derive** - Derive macros for canlog
+
+## Installation
+
+### Rust Crates
+
+Add packages to your `Cargo.toml`:
+
+```toml
+[dependencies]
+pocket-ic = "12.0.0"
+icrc-ledger-types = "0.1.12"
+ic-ed25519 = "0.6.0"
+ic-sha3 = "1.0.0"
+```
+
+Or use `cargo add`:
+
+```bash
+cargo add pocket-ic
+cargo add icrc-ledger-types
+cargo add ic-ed25519
+```
+
+## Package Guidelines
+
+All packages in this directory follow these standards:
+
+<Check>Has a LICENSE file (Apache 2.0)</Check>
+<Check>Has a comprehensive README.md</Check>
+<Check>Maintains a CHANGELOG.md following [Keep a Changelog](https://keepachangelog.com/)</Check>
+<Check>Has team ownership defined in CODEOWNERS</Check>
+<Check>Team ownership of package name in the registry</Check>
+
+## Documentation
+
+Each package provides:
+
+- **README** - Quick start and basic usage
+- **API Documentation** - Published on [docs.rs](https://docs.rs) for Rust crates
+- **Examples** - Sample code and integration tests
+- **Changelog** - Version history and migration guides
+
+## Contributing
+
+To contribute to these packages:
+
+1. Follow the package guidelines listed above
+2. Ensure your changes maintain backward compatibility or follow semantic versioning
+3. Update the changelog with your changes
+4. Add tests for new functionality
+5. Update documentation as needed
+
+## Repository
+
+All packages are maintained in the main Internet Computer repository:
+
+- **GitHub**: [dfinity/ic](https://github.com/dfinity/ic)
+- **Packages Directory**: `packages/`
+
+## Support
+
+For questions and support:
+
+- Join the discussion on the [DFINITY Forum](https://forum.dfinity.org/)
+- Check package-specific documentation on [docs.rs](https://docs.rs)
+- Review examples in the repository

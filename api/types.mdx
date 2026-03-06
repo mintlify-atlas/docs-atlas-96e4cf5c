@@ -1,0 +1,341 @@
+---
+title: 'Core Types'
+description: 'Fundamental type definitions used across the Internet Computer protocol'
+---
+
+## Overview
+
+The Internet Computer protocol defines a comprehensive set of base types that form the foundation of the system. These types are defined in `rs/types/base_types/` and handle identity, versioning, resource management, and memory addressing.
+
+## Principal Types
+
+### PrincipalId
+
+The fundamental identity type representing principals as described in the [IC interface specification](https://internetcomputer.org/docs/current/references/ic-interface-spec#principal).
+
+<ParamField path="PrincipalId" type="struct">
+  A principal is a blob with variable length (bounded by 29 bytes) that uniquely identifies entities in the IC.
+  
+  <Expandable title="properties">
+    <ResponseField name="MAX_LENGTH_IN_BYTES" type="usize" default="29">
+      Maximum length of a principal in bytes
+    </ResponseField>
+    <ResponseField name="HASH_LEN_IN_BYTES" type="usize" default="28">
+      Length of hash used in principal generation
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub struct PrincipalId(pub Principal)
+```
+
+**Key Methods:**
+
+<ParamField path="as_slice()" type="fn(&self) -> &[u8]">
+  Returns the principal as a byte slice
+</ParamField>
+
+<ParamField path="to_vec()" type="fn(&self) -> Vec<u8>">
+  Converts the principal to a byte vector
+</ParamField>
+
+<ParamField path="class()" type="fn(&self) -> Result<PrincipalIdClass, String>">
+  Returns the class of this principal (Opaque, SelfAuthenticating, Derived, or Anonymous)
+</ParamField>
+
+### PrincipalIdClass
+
+Defines the different classes of principals in the IC:
+
+<ParamField path="PrincipalIdClass" type="enum">
+  <Expandable title="variants">
+    <ResponseField name="Opaque" type="1">
+      System-generated or internal IDs (e.g., canister IDs, node IDs)
+    </ResponseField>
+    <ResponseField name="SelfAuthenticating" type="2">
+      Derived from a public key using SHA-224 hash
+    </ResponseField>
+    <ResponseField name="Derived" type="3">
+      Derived from another principal and a seed
+    </ResponseField>
+    <ResponseField name="Anonymous" type="4">
+      The anonymous principal
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub enum PrincipalIdClass {
+    Opaque = 1,
+    SelfAuthenticating = 2,
+    Derived = 3,
+    Anonymous = 4,
+}
+```
+
+### CanisterId
+
+A specialized principal type representing canister identities.
+
+<ParamField path="CanisterId" type="struct">
+  Represents a canister's PrincipalId with additional validation constraints.
+  
+  <Expandable title="constraints">
+    <ResponseField name="class" type="Opaque">
+      Must be of class Opaque
+    </ResponseField>
+    <ResponseField name="length" type="10 bytes">
+      Must be exactly 10 bytes long
+    </ResponseField>
+    <ResponseField name="byte_8" type="0x01">
+      Byte at index 8 (penultimate) must be 0x01
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub struct CanisterId(PrincipalId)
+```
+
+**Construction Methods:**
+
+<ParamField path="from_u64(val: u64)" type="const fn">
+  Creates a CanisterId from a u64 value using big-endian encoding. The generated principal maintains ordering.
+</ParamField>
+
+<ParamField path="ic_00()" type="const fn">
+  Returns the management canister ID (aaaaa-aa)
+</ParamField>
+
+<ParamField path="try_from_principal_id(principal_id: PrincipalId)" type="fn">
+  Validates and converts a PrincipalId to CanisterId with proper validation checks
+</ParamField>
+
+## Registry and Network Types
+
+### RegistryVersion
+
+<ParamField path="RegistryVersion" type="type alias">
+  Represents the registry's version number as a monotonically increasing counter.
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub type RegistryVersion = AmountOf<RegistryVersionTag, u64>
+```
+
+### NodeId
+
+<ParamField path="NodeId" type="type alias">
+  Represents a node's PrincipalId in the network.
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub type NodeId = Id<NodeTag, PrincipalId>
+```
+
+### SubnetId
+
+<ParamField path="SubnetId" type="type alias">
+  Represents a subnet's PrincipalId in the network.
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub type SubnetId = Id<SubnetTag, PrincipalId>
+```
+
+## Resource Management Types
+
+### NumBytes
+
+<ParamField path="NumBytes" type="type alias">
+  Models a non-negative number of bytes, primarily used for tracking memory usage and allocation in canisters.
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub type NumBytes = AmountOf<NumBytesTag, u64>
+```
+
+**Display Format:**
+- Automatically formats using appropriate binary power units (KiB, MiB, GiB, etc.)
+- Shows up to 2 decimal places (e.g., "123.45 MiB")
+- No decimals for byte-level precision
+
+### NumSeconds
+
+<ParamField path="NumSeconds" type="type alias">
+  Models a non-negative number of seconds.
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub type NumSeconds = AmountOf<NumSecondsTag, u64>
+```
+
+### NumOsPages
+
+<ParamField path="NumOsPages" type="type alias">
+  Represents a number of OS-sized memory pages.
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub type NumOsPages = AmountOf<NumOsPagesTag, u64>
+```
+
+## Memory Management Types
+
+### InternalAddress
+
+<ParamField path="InternalAddress" type="struct">
+  Represents an internal memory address used for pointer arithmetic in canister memory management.
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub struct InternalAddress(usize)
+```
+
+**Key Methods:**
+
+<ParamField path="new(value: usize)" type="fn">
+  Creates a new InternalAddress
+</ParamField>
+
+<ParamField path="get()" type="fn(&self) -> usize">
+  Returns the underlying address value
+</ParamField>
+
+<ParamField path="checked_add(self, rhs: Self)" type="fn">
+  Safely adds two addresses with overflow checking
+</ParamField>
+
+<ParamField path="checked_sub(self, rhs: Self)" type="fn">
+  Safely subtracts addresses with underflow checking
+</ParamField>
+
+### SnapshotId
+
+<ParamField path="SnapshotId" type="struct">
+  Represents a canister snapshot ID, unique across all subnets. Composed of a local snapshot ID (u64) and canister ID.
+  
+  <Expandable title="properties">
+    <ResponseField name="MAX_LENGTH_IN_BYTES" type="usize">
+      PrincipalId::MAX_LENGTH_IN_BYTES + LOCAL_ID_LENGTH_IN_BYTES
+    </ResponseField>
+    <ResponseField name="LOCAL_ID_LENGTH_IN_BYTES" type="usize" default="8">
+      Length of the local snapshot ID component
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub struct SnapshotId {
+    len: usize,
+    bytes: [u8; Self::MAX_LENGTH_IN_BYTES],
+}
+```
+
+**Key Methods:**
+
+<ParamField path="get_canister_id()" type="fn(&self) -> CanisterId">
+  Extracts the canister ID from the snapshot ID
+</ParamField>
+
+<ParamField path="get_local_snapshot_id()" type="fn(&self) -> u64">
+  Extracts the local snapshot counter
+</ParamField>
+
+<ParamField path="from((CanisterId, u64))" type="impl From">
+  Constructs a SnapshotId from a canister ID and local ID pair
+</ParamField>
+
+## Management Canister Types
+
+For detailed management canister types, see the [Management Canister Types Reference](/api/management-types).
+
+### IC_00 Constant
+
+<ParamField path="IC_00" type="CanisterId">
+  The management canister ID, used for system-level operations.
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub const IC_00: CanisterId = CanisterId::ic_00();
+```
+
+## Hashing Utilities
+
+### hash_of_map
+
+<ParamField path="hash_of_map" type="fn<K, V, F>">
+  Computes the hash of a BTreeMap following the IC interface specification's hash-of-map algorithm.
+  
+  <Expandable title="parameters">
+    <ResponseField name="map" type="&BTreeMap<K, V>">
+      The map to hash
+    </ResponseField>
+    <ResponseField name="hash_key_val" type="F: Fn(&K, &V) -> Vec<u8>">
+      Function to hash individual key-value pairs
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+**Rust Signature:**
+```rust
+pub fn hash_of_map<K, V, F>(map: &BTreeMap<K, V>, hash_key_val: F) -> [u8; HASH_LENGTH]
+where
+    F: Fn(&K, &V) -> Vec<u8>
+```
+
+**Algorithm:**
+1. Hash each key-value pair using the provided function
+2. Sort the resulting hashes
+3. Concatenate and hash the sorted list with SHA-256
+
+**Constant:**
+```rust
+pub const HASH_LENGTH: usize = 32;
+```
+
+## Serialization
+
+All types implement standard Rust serialization traits:
+
+- **Candid**: `CandidType` for inter-canister communication
+- **Serde**: `Serialize` and `Deserialize` for data persistence
+- **Protobuf**: Protocol buffer encoding for network transmission
+
+## Example Usage
+
+```rust
+use ic_base_types::{PrincipalId, CanisterId, NumBytes};
+
+// Create a canister ID from a u64
+let canister_id = CanisterId::from_u64(12345);
+
+// Convert to principal
+let principal: PrincipalId = canister_id.into();
+
+// Parse from text representation
+let parsed = PrincipalId::from_str("aaaaa-aa").unwrap();
+
+// Track memory usage
+let memory_used = NumBytes::from(1024 * 1024); // 1 MiB
+println!("Memory: {}", memory_used); // Displays: "1.00 MiB"
+```
+
+## See Also
+
+- [Core Interfaces](/api/interfaces) - Trait definitions using these types
+- [Registry API](/api/registry) - Registry canister using network types
+- [IC Interface Specification](https://internetcomputer.org/docs/current/references/ic-interface-spec) - Official protocol specification

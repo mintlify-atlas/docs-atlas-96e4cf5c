@@ -1,0 +1,291 @@
+---
+title: Network Nervous System (NNS)
+description: Learn about the Network Nervous System, the decentralized governance system that controls the Internet Computer network
+---
+
+The Network Nervous System (NNS) is the open tokenized governance system that controls the Internet Computer blockchain. It provides complete control over all aspects of the IC network through a decentralized, secure governance mechanism.
+
+## Overview
+
+The NNS allows the Internet Computer network to be governed in an open, decentralized, and secure manner. It can:
+
+- Upgrade the protocol and software used by node machines
+- Induct new node operators and machines into the network
+- Create new subnets to increase network capacity
+- Configure economic parameters for compute capacity pricing
+- Freeze malicious canister software to protect the network
+
+<Info>
+The NNS is implemented primarily in `rs/nns/` and consists of several specialized canisters working together to provide decentralized governance.
+</Info>
+
+## Core Concepts
+
+### Neurons
+
+Neurons are the fundamental voting entities in the NNS. Network participants create neurons by locking ICP tokens:
+
+```rust
+// From rs/nns/governance/src/lib.rs
+// Neurons are created by locking ICP tokens with a dissolve delay
+// The dissolve delay determines voting power and rewards
+```
+
+**Key Properties:**
+- **Locked ICP**: Users stake ICP tokens to create neurons
+- **Dissolve Delay**: Minimum time before tokens can be unlocked (up to 8 years)
+- **Voting Power**: Derived from locked balance, dissolve delay, and age
+- **Rewards**: Neurons earn newly minted ICP for participating in voting
+
+### Proposals
+
+Proposals are the mechanism for making changes to the IC. The NNS accepts proposals and decides to adopt or reject them based on neuron voting activity.
+
+**Proposal Types:**
+- Network management (subnet creation, node administration)
+- Protocol upgrades
+- Economic parameter adjustments
+- Service Nervous System (SNS) creation
+- Canister management (stop, start, upgrade)
+
+<Card title="Proposal Lifecycle" icon="flow-arrow">
+1. **Submission**: A neuron submits a proposal (with a fee if rejected)
+2. **Voting**: Neurons vote to adopt or reject
+3. **Decision**: The NNS determines outcome based on voting activity
+4. **Execution**: Adopted proposals invoke their corresponding system function
+</Card>
+
+## Governance Canister
+
+The Governance canister is the heart of the NNS, managing proposals, neurons, and voting.
+
+### Creating a Neuron
+
+Neuron creation is a two-step process:
+
+<Steps>
+  <Step title="Transfer ICP to Governance">
+    User sends ICP tokens to a governance canister subaccount associated with their principal via the Ledger canister
+  </Step>
+  <Step title="Claim Neuron">
+    User calls Governance to check the subaccount balance and create the neuron
+  </Step>
+  <Step title="Configure Dissolve Delay">
+    User must increase dissolve delay to at least 6 months to enable voting
+  </Step>
+</Steps>
+
+### Voting Mechanism
+
+The NNS uses a liquid democracy model:
+
+```
+Direct Voting: Neuron owners vote manually on proposals
+↓
+Following: Neurons can follow other neurons to vote automatically
+↓
+Cascading Votes: Trusted neuron votes trigger automatic following votes
+↓
+Quick Decision: Majority of voting power determines proposal outcome
+```
+
+**Wait For Quiet Algorithm:**
+
+When a proposal doesn't quickly receive a majority, the NNS uses "Wait For Quiet":
+
+- Measures "voting noise" from ongoing voting volume
+- Waits for noise to fall below a threshold
+- Tallies votes once activity stabilizes
+- Allows decisions without requiring a voting quorum
+
+### Voting Rewards
+
+Neuron owners earn rewards for participating in governance:
+
+**Reward Factors:**
+- Size of locked ICP balance
+- Dissolve delay (higher = more rewards)
+- Neuron age
+- Voting participation rate
+- Overall network voting activity
+
+<CodeGroup>
+```rust Source Location
+// Implementation in rs/nns/governance/src/
+// - lib.rs: Core governance logic
+// - neuron_store.rs: Neuron management
+// - voting.rs: Voting mechanisms
+// - reward/: Reward calculation and distribution
+```
+</CodeGroup>
+
+## NNS Canisters
+
+The NNS consists of multiple specialized canisters:
+
+<CardGroup cols={2}>
+  <Card title="Governance" icon="gavel">
+    Manages neurons, proposals, and voting logic
+  </Card>
+  <Card title="Registry" icon="database">
+    Stores network configuration and topology information
+  </Card>
+  <Card title="Ledger" icon="coins">
+    Tracks ICP token balances and transactions
+  </Card>
+  <Card title="Root" icon="crown">
+    Manages upgrades of other NNS canisters
+  </Card>
+  <Card title="Lifeline" icon="heart-pulse">
+    Emergency canister for NNS recovery
+  </Card>
+  <Card title="Cycles Minting" icon="arrows-rotate">
+    Converts ICP to cycles for computation
+  </Card>
+</CardGroup>
+
+## Deployment
+
+### Local Deployment
+
+To deploy NNS canisters locally for testing:
+
+```bash
+# Start a local replica
+dfx start --host 127.0.0.1:8080
+
+# Build NNS canisters
+cd rs/nns
+cargo build -p registry-canister -p governance-canister
+
+# Deploy using ic-nns-init
+cargo run --bin ic-nns-init -- \
+  --url http://localhost:8080/ \
+  --wasm-dir=./target/wasm32-unknown-unknown/release
+```
+
+### Production Deployment
+
+To production and testnets, NNS canisters are deployed by Ansible onto the NNS subnet.
+
+<Tip>
+For testnet deployment, configure the network in `dfx.json` and map canister IDs in `canister_ids.json`.
+</Tip>
+
+## Interacting with the NNS
+
+### Using dfx
+
+Manual interaction for testing:
+
+```bash
+# Get neuron information
+dfx canister call neurons get_neuron_info --type=idl '(449479075714955186)'
+
+# Vote on a proposal
+dfx canister call neurons forward_vote \
+  --type=idl '(449479075714955186, 1, variant{Yes})'
+
+# Get proposal information  
+dfx canister call governance get_proposal_info '(1)'
+
+# List pending proposals
+dfx canister call governance get_pending_proposals '()'
+```
+
+### Using Candid Web UI
+
+The Candid web server provides a user-friendly interface:
+
+```bash
+# Start the Candid web server
+dfx bootstrap
+
+# Access canister UIs:
+# Governance: http://localhost:8081/candid?canisterId=rrkah-fqaaa-aaaaa-aaaaq-cai
+# Root: http://localhost:8081/candid?canisterId=r7inp-6aaaa-aaaaa-aaabq-cai
+```
+
+### Using ic-admin
+
+For administrative operations:
+
+```bash
+# Get blessed replica versions
+cargo run --bin ic-admin -- \
+  --nns-url=http://localhost:8080 \
+  get-blessed-replica-versions
+
+# Get subnet list
+cargo run --bin ic-admin -- \
+  --nns-url=http://localhost:8080 \
+  get-subnet-list
+```
+
+## Example Scenarios
+
+### Subnet Creation Proposal
+
+<Steps>
+  <Step title="Generate Key Material">
+    Use ic-prep to create node configurations
+  </Step>
+  <Step title="Upload to Registry">
+    Use ic-admin to add node public keys to the registry
+  </Step>
+  <Step title="Create Proposal">
+    Submit a proposal to create the subnet with the specified nodes
+  </Step>
+  <Step title="Vote and Execute">
+    Neurons vote on the proposal; if adopted, the subnet is created
+  </Step>
+</Steps>
+
+### Upgrade Proposal
+
+<Steps>
+  <Step title="Submit Upgrade Proposal">
+    Propose upgrading a canister to a new WASM version
+  </Step>
+  <Step title="Check Neuron Status">
+    Verify neurons can vote (sufficient dissolve delay)
+  </Step>
+  <Step title="Vote">
+    Neurons vote via CLI or automatic following
+  </Step>
+  <Step title="Execute">
+    If adopted, the NNS automatically upgrades the canister
+  </Step>
+</Steps>
+
+## Source Code Reference
+
+<Tip>
+The NNS implementation can be found in the following locations:
+- `rs/nns/`: Core NNS canisters and tools
+- `rs/nns/governance/`: Governance canister implementation
+- `rs/nns/README.adoc`: Deployment and interaction guide
+</Tip>
+
+**Key Files:**
+- `rs/nns/governance/src/lib.rs`: Core governance logic with neuron and proposal management
+- `rs/nns/governance/src/voting.rs`: Voting mechanisms and algorithms
+- `rs/nns/governance/src/proposals/`: Proposal type implementations
+- `rs/nns/governance/src/neuron_store.rs`: Neuron storage and indexing
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Service Nervous System" href="/core/sns">
+    Learn about SNS for dapp-specific governance
+  </Card>
+  <Card title="Canisters" href="/core/canisters">
+    Understand the canister execution model
+  </Card>
+  <Card title="Cryptography" href="/core/crypto">
+    Explore IC's cryptographic foundations
+  </Card>
+  <Card title="State Management" href="/core/state-management">
+    Dive into state synchronization and persistence
+  </Card>
+</CardGroup>

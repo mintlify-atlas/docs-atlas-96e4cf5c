@@ -1,0 +1,482 @@
+---
+title: Verifying Releases
+description: How to verify the build reproducibility of IC-OS update images
+---
+
+The Internet Computer provides a robust system for verifying that IC-OS update images can be reproduced from source code. This ensures transparency and trustworthiness of the deployed code.
+
+## Overview
+
+Each [release proposal](https://dashboard.internetcomputer.org/releases) on the Network Nervous System (NNS) includes detailed verification instructions. The verification process builds the IC from the specified commit and compares the locally built artifacts with those published on the CDN.
+
+<Info>
+  Build reproducibility ensures that the exact same binary artifacts are produced from the same source code, proving that deployed code matches the public repository.
+</Info>
+
+## Prerequisites
+
+Before verifying releases, ensure your system meets these requirements:
+
+<CardGroup cols={2}>
+  <Card title="Operating System" icon="ubuntu">
+    Ubuntu 22.04 or higher
+  </Card>
+  <Card title="Python" icon="python">
+    Python 3.x installed
+  </Card>
+  <Card title="curl" icon="download">
+    curl utility installed
+  </Card>
+  <Card title="Disk Space" icon="hard-drive">
+    About 100 GB free in `$HOME`
+  </Card>
+</CardGroup>
+
+### Installing Dependencies
+
+```bash
+sudo apt-get update
+sudo apt-get install -y curl python3 git podman
+```
+
+## Quick Start
+
+To verify an IC OS Version Election proposal:
+
+<Steps>
+  <Step title="Get the Commit ID">
+    Find the commit ID from the [release proposal](https://dashboard.internetcomputer.org/releases).
+  </Step>
+  
+  <Step title="Run Verification">
+    Execute the repro-check script:
+    
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+        python3 - -p <proposal_number>
+    ```
+    
+    Replace `{COMMIT_ID}` with the actual commit hash and `<proposal_number>` with the proposal ID.
+  </Step>
+  
+  <Step title="Wait for Completion">
+    The script will:
+    - Clone the IC repository
+    - Build all IC-OS images
+    - Download published artifacts
+    - Compare hashes
+    
+    This process can take 1-2 hours depending on your system.
+  </Step>
+</Steps>
+
+<Warning>
+  Always use versioned repro-check URLs (with `{COMMIT_ID}`) instead of `master` to ensure compatibility between the script and the build system for that specific commit.
+</Warning>
+
+## Verification Methods
+
+You can verify releases using either a proposal number or a Git commit hash:
+
+<Tabs>
+  <Tab title="By Proposal Number">
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+        python3 - -p <proposal_number>
+    ```
+    
+    The script will:
+    - Fetch the proposal data from the NNS
+    - Extract the git commit hash
+    - Verify the proposal's release package hash
+    - Build and compare artifacts
+  </Tab>
+  
+  <Tab title="By Git Commit">
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+        python3 - -c {COMMIT_ID}
+    ```
+    
+    The script will:
+    - Clone the repository at the specified commit
+    - Build all IC-OS images
+    - Download artifacts from CDN
+    - Compare local vs. remote hashes
+  </Tab>
+</Tabs>
+
+## Component-Specific Verification
+
+You can verify individual IC-OS components to save time and resources:
+
+<Accordion title="GuestOS Only">
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+      python3 - -c {COMMIT_ID} --guestos
+  ```
+  
+  Verifies:
+  - GuestOS update image (`update-img.tar.zst`)
+  - Launch measurements for confidential computing
+</Accordion>
+
+<Accordion title="HostOS Only">
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+      python3 - -c {COMMIT_ID} --hostos
+  ```
+  
+  Verifies:
+  - HostOS update image (`update-img.tar.zst`)
+</Accordion>
+
+<Accordion title="SetupOS Only">
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+      python3 - -c {COMMIT_ID} --setupos
+  ```
+  
+  Verifies:
+  - SetupOS disk image (`disk-img.tar.zst`)
+</Accordion>
+
+<Accordion title="Recovery GuestOS">
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+      python3 - -c {COMMIT_ID} --recovery
+  ```
+  
+  Verifies:
+  - Recovery GuestOS update image
+</Accordion>
+
+<Note>
+  If no component flags are specified, all components (GuestOS, HostOS, SetupOS, and Recovery) are verified by default.
+</Note>
+
+## Advanced Options
+
+### Custom Cache Directory
+
+By default, the script uses `~/.cache/repro-check`. You can specify a different location:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+    python3 - -c {COMMIT_ID} --cache-dir /path/to/cache
+```
+
+### Clean Cache Before Running
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+    python3 - -c {COMMIT_ID} --clean
+```
+
+<Warning>
+  The `--clean` flag cannot be used with a manually specified `--cache-dir` for safety.
+</Warning>
+
+### Download Source Selection
+
+Choose which CDN to download artifacts from:
+
+```bash
+# Download from download.dfinity.systems (default)
+curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+    python3 - -c {COMMIT_ID} --download-source systems
+
+# Download from download.dfinity.network
+curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+    python3 - -c {COMMIT_ID} --download-source network
+
+# Download from both and compare
+curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+    python3 - -c {COMMIT_ID} --download-source both
+```
+
+### Debug Mode
+
+Enable verbose logging and preserve temporary files:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+    python3 - -c {COMMIT_ID} --debug
+```
+
+### Dry Run
+
+Build locally without performing verification:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+    python3 - -c {COMMIT_ID} --dry-run
+```
+
+## Understanding the Verification Process
+
+The repro-check script performs several steps:
+
+<Steps>
+  <Step title="Environment Checks">
+    - Verifies x86-64 architecture
+    - Checks Ubuntu 22.04+
+    - Validates 16+ GB RAM
+    - Ensures 100+ GB free disk space
+    - Installs missing dependencies (git, podman)
+  </Step>
+  
+  <Step title="Repository Setup">
+    - Clones IC repository from GitHub
+    - Checks out the specified commit
+    - Verifies git integrity
+  </Step>
+  
+  <Step title="Download Remote Artifacts">
+    - Downloads IC-OS images from CDN
+    - Downloads SHA256SUMS files
+    - Downloads launch-measurements.json (for GuestOS)
+    - Caches downloads for future runs
+  </Step>
+  
+  <Step title="Local Build">
+    - Builds IC-OS images using `./ci/container/build-ic.sh --icos`
+    - Extracts built artifacts
+  </Step>
+  
+  <Step title="Verification">
+    - Computes SHA-256 hashes of local builds
+    - Compares with remote CDN artifacts
+    - Verifies launch measurements (for GuestOS)
+    - Reports results
+  </Step>
+</Steps>
+
+## Verification Output
+
+Successful verification output:
+
+```
+[ℹ️] Verification successful for GuestOS!
+[ℹ️] The sha256 sum for GuestOS from the artifact built locally and the one fetched from remote match:
+	Local = abc123...
+	Remote = abc123...
+
+[ℹ️] Verification successful for HostOS!
+[ℹ️] The sha256 sum for HostOS from the artifact built locally and the one fetched from remote match:
+	Local = def456...
+	Remote = def456...
+
+[ℹ️] Total time: 1h 23m 45s
+```
+
+Failed verification output:
+
+```
+[❌] Error! The sha256 sum from the remote does not match the one we just built for GuestOS.
+Local:   abc123...
+Remote:  xyz789...
+```
+
+<Warning>
+  If verification fails, this indicates a potential issue with build reproducibility or the published artifacts. Report such issues to the DFINITY Foundation.
+</Warning>
+
+## Verifying Proposals
+
+When verifying a proposal, additional checks are performed:
+
+<AccordionGroup>
+  <Accordion title="Proposal Package Hash">
+    The script verifies that the release package URLs in the proposal point to artifacts with the correct SHA-256 hash.
+    
+    ```bash
+    [ℹ️] The proposal's artifact and hash match.
+    ```
+  </Accordion>
+  
+  <Accordion title="Proposal vs. CDN">
+    Compares the proposal's release package hash with the artifact stored on the CDN:
+    
+    ```bash
+    [ℹ️] The GuestOS sha256sum from the proposal and remote match.
+    ```
+  </Accordion>
+  
+  <Accordion title="Launch Measurements">
+    For GuestOS, verifies the confidential computing launch measurements:
+    
+    ```bash
+    [ℹ️] The GuestOS measurements from the proposal and remote match.
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Cache Management
+
+The repro-check script uses caching to speed up repeated verifications:
+
+### Cache Location
+
+Default: `~/.cache/repro-check/`
+
+### Cache Structure
+
+```
+~/.cache/repro-check/
+├── <git-hash-1>/
+│   ├── download.dfinity.systems/
+│   │   ├── guest-os/
+│   │   ├── host-os/
+│   │   └── setup-os/
+│   └── download.dfinity.network/
+├── <git-hash-2>/
+├── repo/  # Git repository cache
+└── tmp-*/  # Temporary build directories
+```
+
+### Cache Cleanup
+
+The script automatically keeps the 2 most recent commit caches and removes older ones.
+
+Manual cleanup:
+
+```bash
+rm -rf ~/.cache/repro-check
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Architecture not x86_64">
+    The build and verification process requires an x86-64 system.
+    
+    ```
+    [❌] Please run this script on x86_64 architecture.
+    ```
+    
+    Use a compatible system or cloud instance.
+  </Accordion>
+  
+  <Accordion title="Not enough disk space">
+    Ensure you have at least 100 GB free:
+    
+    ```bash
+    df -h $HOME
+    ```
+    
+    Consider using `--cache-dir` to specify a volume with more space:
+    
+    ```bash
+    python3 repro-check -c {COMMIT_ID} --cache-dir /mnt/large-volume/cache
+    ```
+  </Accordion>
+  
+  <Accordion title="Git fetch failed">
+    If fetching the commit fails:
+    
+    ```
+    [❌] Could not fetch commit {COMMIT_ID} from the remote repository.
+    ```
+    
+    - Verify the commit hash is correct
+    - Check your internet connection
+    - Ensure you have access to github.com/dfinity/ic
+  </Accordion>
+  
+  <Accordion title="Download failed">
+    If artifact downloads fail:
+    
+    ```
+    [❌] Could not download URL. Error: ...
+    ```
+    
+    - Check your internet connection
+    - Try a different download source with `--download-source`
+    - Verify the commit has been published to the CDN
+  </Accordion>
+  
+  <Accordion title="Build failed">
+    If the local build fails:
+    
+    - Ensure all dependencies are installed
+    - Check build logs for specific errors
+    - Verify you have enough RAM and disk space
+    - Try running in debug mode: `--debug`
+  </Accordion>
+</AccordionGroup>
+
+## System Requirements Summary
+
+<Card title="Recommended System" icon="server">
+  For optimal verification performance:
+  - **CPU**: 8+ cores
+  - **RAM**: 32 GB+
+  - **Disk**: 200 GB+ free space
+  - **Network**: High-speed internet connection
+  - **OS**: Ubuntu 22.04 LTS
+</Card>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Versioned URLs" icon="link">
+    Always use the commit-specific repro-check URL, not `master`.
+  </Card>
+  
+  <Card title="Verify Critical Releases" icon="shield">
+    Verify releases before voting on NNS proposals.
+  </Card>
+  
+  <Card title="Cache Results" icon="database">
+    Keep the cache directory to speed up re-verification.
+  </Card>
+  
+  <Card title="Monitor Progress" icon="eye">
+    Use debug mode for long-running verifications to see detailed progress.
+  </Card>
+</CardGroup>
+
+## Example: Complete Verification Workflow
+
+Here's a complete example verifying a specific release:
+
+```bash
+# 1. Check system requirements
+df -h $HOME  # Ensure 100+ GB free
+free -h      # Ensure 16+ GB RAM
+
+# 2. Install dependencies
+sudo apt-get update
+sudo apt-get install -y curl python3 git podman
+
+# 3. Verify a proposal (example: proposal #123456)
+export COMMIT_ID="a1b2c3d4e5f6..."
+export PROPOSAL_NUM="123456"
+
+curl -fsSL https://raw.githubusercontent.com/dfinity/ic/${COMMIT_ID}/ci/scripts/repro-check | \
+    python3 - -p ${PROPOSAL_NUM}
+
+# 4. Check results
+echo $?  # Should be 0 for success
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="System Requirements" icon="list-check" href="/getting-started/system-requirements">
+    Review detailed system requirements
+  </Card>
+  
+  <Card title="Building the IC" icon="hammer" href="/getting-started/building">
+    Learn how to build IC components
+  </Card>
+  
+  <Card title="IC-OS Overview" icon="os" href="/ic-os/overview">
+    Understand IC-OS architecture
+  </Card>
+  
+  <Card title="Release Dashboard" icon="chart-line" href="https://dashboard.internetcomputer.org/releases">
+    View current and past releases
+  </Card>
+</CardGroup>

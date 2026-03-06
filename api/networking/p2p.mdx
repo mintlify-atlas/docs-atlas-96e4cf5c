@@ -1,0 +1,388 @@
+---
+title: "P2P Layer API"
+description: "Peer-to-peer communication protocol for subnet-internal message delivery"
+---
+
+## Overview
+
+The peer-to-peer (P2P) layer of the Internet Computer is responsible for message delivery within subnets of nodes. Each subnet operates a separate peer-to-peer network, and nodes within each subnet use this network to send messages to each other.
+
+The P2P layer provides the foundation for multiple components including:
+- Internet Computer Consensus protocol
+- State synchronization protocol
+- Artifact exchange and replication
+
+<Note>
+The P2P protocol operates at the subnet level. Each subnet maintains its own isolated P2P network.
+</Note>
+
+## Architecture
+
+The P2P layer consists of several key components:
+
+### Transport Layer
+
+The transport layer is based on **QUIC protocol**, providing:
+- Reliable, encrypted communication between peers
+- Multiple concurrent streams over a single connection
+- Built-in congestion control
+- Fast connection establishment
+
+<CardGroup cols={2}>
+  <Card title="QUIC Transport" icon="network-wired" href="#quic-transport">
+    Connection management and RPC interfaces
+  </Card>
+  <Card title="Peer Manager" icon="users" href="#peer-manager">
+    Topology discovery and peer tracking
+  </Card>
+</CardGroup>
+
+### Core Components
+
+#### Artifact Manager
+
+Manages the lifecycle of artifacts (messages) that need to be replicated across the subnet.
+
+**Location**: `rs/p2p/artifact_manager/`
+
+```rust
+pub trait MutablePool<T: IdentifiableArtifact> {
+    type Mutations;
+
+    /// Inserts a message into the pool
+    fn insert(&mut self, msg: UnvalidatedArtifact<T>);
+
+    /// Removes a message from the pool
+    fn remove(&mut self, id: &T::Id);
+
+    /// Applies a set of change actions to the pool
+    fn apply(&mut self, mutations: Self::Mutations) -> ArtifactTransmits<T>;
+}
+```
+
+**Key responsibilities**:
+- Maintain pools of validated and unvalidated artifacts
+- Process incoming artifacts from peers
+- Coordinate with protocol-specific handlers (consensus, state sync, etc.)
+- Manage artifact lifecycle and garbage collection
+
+#### Artifact Downloader
+
+Handles downloading artifacts from peers in the subnet.
+
+**Location**: `rs/p2p/artifact_downloader/`
+
+**Features**:
+- Parallel download from multiple peers
+- Artifact assembly and validation
+- Retry logic and error handling
+- Priority-based download scheduling
+
+#### Consensus Manager
+
+Provides broadcast and replication services for consensus artifacts.
+
+**Location**: `rs/p2p/consensus_manager/`
+
+```rust
+pub struct AbortableBroadcastChannel<T: IdentifiableArtifact> {
+    pub outbound_tx: Sender<ArtifactTransmit<T>>,
+    pub inbound_rx: Receiver<UnvalidatedArtifactMutation<T>>,
+    pub inbound_tx: Sender<UnvalidatedArtifactMutation<T>>,
+}
+```
+
+**Key capabilities**:
+- Efficient artifact broadcasting using push/pull strategies
+- Latency-sensitive message prioritization
+- Abortable transmissions for cancelled operations
+
+## QUIC Transport
+
+### Overview
+
+The QUIC transport provides connectivity to all peers in a subnet and supports RPC-style communication.
+
+**Location**: `rs/p2p/quic_transport/`
+
+### Key Features
+
+<AccordionGroup>
+  <Accordion title="Connection Management">
+    The connection manager keeps peers connected based on the current subnet topology.
+    
+    - Automatically establishes connections to subnet members
+    - Monitors connection health
+    - Handles reconnection on failures
+  </Accordion>
+
+  <Accordion title="Request Handling">
+    Each connection spawns request handlers that accept incoming streams.
+    
+    - Each RPC occurs on a separate substream
+    - Requests are routed based on URI paths
+    - Fully decoupled concurrent operations
+  </Accordion>
+
+  <Accordion title="Connection Handles">
+    Provides RPC and push interfaces to communicate with peers.
+    
+    - Lightweight wrappers around QUIC connections
+    - Thread-safe and cloneable
+    - Non-blocking operations
+  </Accordion>
+</AccordionGroup>
+
+### Transport Interface
+
+```rust
+#[async_trait]
+pub trait Transport: Send + Sync {
+    /// Send an RPC request to a peer
+    async fn rpc(
+        &self,
+        peer_id: &NodeId,
+        request: Request<Bytes>,
+    ) -> Result<Response<Bytes>, P2PError>;
+
+    /// Get list of connected peers
+    fn peers(&self) -> Vec<(NodeId, ConnId)>;
+}
+```
+
+### Message Size Limits
+
+The transport supports large messages for consensus operations:
+
+```rust
+// Maximum message size: 128 MB
+pub const MAX_MESSAGE_SIZE_BYTES: usize = 128 * 1024 * 1024;
+```
+
+<Warning>
+Large messages (>5MB) are supported to accommodate summary blocks for large subnets (40+ nodes).
+</Warning>
+
+### Usage Example
+
+```rust
+use ic_quic_transport::{QuicTransport, SubnetTopology};
+
+// Start the QUIC transport
+let transport = QuicTransport::start(
+    &log,
+    &metrics_registry,
+    &rt_handle,
+    tls_config,
+    registry_client,
+    node_id,
+    topology_watcher,
+    udp_socket,
+    router,
+);
+
+// Send RPC to a peer
+let request = Request::builder()
+    .uri("/api/v1/artifact")
+    .body(Bytes::from(payload))
+    .unwrap();
+
+let response = transport.rpc(&peer_id, request).await?;
+```
+
+## Peer Manager
+
+### Overview
+
+The peer manager monitors the registry and maintains subnet membership information.
+
+**Location**: `rs/p2p/peer_manager/`
+
+### Responsibilities
+
+1. **Registry Monitoring**: Periodically checks for subnet membership changes
+2. **Topology Updates**: Publishes `SubnetTopology` via tokio watch channel
+3. **Version Tracking**: Tracks registry versions used by consensus
+
+### Subnet Topology
+
+```rust
+pub struct SubnetTopology {
+    subnet_nodes: HashMap<NodeId, SocketAddr>,
+    earliest_registry_version: RegistryVersion,
+    latest_registry_version: RegistryVersion,
+}
+```
+
+**Key methods**:
+- `iter()`: Iterate over all subnet members
+- `is_member()`: Check if a node is part of the subnet
+- `get_addr()`: Get socket address for a node
+- `get_subnet_nodes()`: Get all node IDs in the subnet
+
+### Configuration
+
+```rust
+const TOPOLOGY_UPDATE_INTERVAL: Duration = Duration::from_secs(3);
+```
+
+The peer manager updates topology every 3 seconds, checking registry versions from the oldest version used by consensus up to the latest local registry version.
+
+## Gossip Protocol
+
+### Artifact Replication
+
+The P2P layer implements a sophisticated gossip protocol for artifact distribution:
+
+#### Push Strategy (High Priority)
+
+For latency-sensitive artifacts:
+- Directly send artifact to all peers
+- Fast delivery but higher bandwidth usage
+- Used for critical consensus messages
+
+#### Pull Strategy (Low Priority)
+
+For normal artifacts:
+- Only send artifact ID (advert) to peers
+- Peers fetch full artifact on demand
+- Bandwidth-efficient for larger artifacts
+
+### Artifact Transmit Types
+
+```rust
+pub enum ArtifactTransmit<T: IdentifiableArtifact> {
+    /// Deliver artifact to peers
+    Deliver(ArtifactWithOpt<T>),
+    /// Abort transmission (e.g., artifact no longer needed)
+    Abort(T::Id),
+}
+
+pub struct ArtifactWithOpt<T> {
+    pub artifact: T,
+    /// If true, push directly to all peers (high priority)
+    /// If false, only push ID to peers (low priority)
+    pub is_latency_sensitive: bool,
+}
+```
+
+### Bouncer Mechanism
+
+The bouncer function guards access to the artifact pool:
+
+```rust
+pub enum BouncerValue {
+    /// Drop the artifact
+    Unwanted,
+    /// May need later
+    MaybeWantsLater,
+    /// Deliver to client
+    Wants,
+}
+```
+
+This provides efficient filtering before expensive validation.
+
+## State Sync Manager
+
+Handles state synchronization between replicas.
+
+**Location**: `rs/p2p/state_sync_manager/`
+
+### Features
+
+- Efficient transfer of large state artifacts
+- Chunk-based downloads for progress tracking
+- Parallel downloads from multiple peers
+- Integration with state manager for persistence
+
+## Error Handling
+
+The P2P layer uses a unified error type:
+
+```rust
+pub struct P2PError {
+    inner: Box<dyn Error + Send + Sync>,
+}
+```
+
+**Supported error types**:
+- `ConnectError`: Connection establishment failures
+- `WriteError`: Send operation failures
+- `ReadToEndError`: Receive operation failures
+- `ConnectionError`: Connection-level errors
+- Protocol decoding errors
+
+## Performance Considerations
+
+### Connection Management
+
+- Single QUIC connection per peer
+- Multiple concurrent streams per connection
+- Automatic connection health monitoring
+- Efficient reconnection on failures
+
+### Message Batching
+
+```rust
+const MAX_P2P_IO_CHANNEL_SIZE: usize = 100;
+```
+
+The artifact processor uses bounded channels with batching to:
+- Reduce processing overhead
+- Improve throughput
+- Prevent memory exhaustion
+
+### Resource Limits
+
+- **Connection timeout**: Configurable per deployment
+- **Message size**: Up to 128 MB per message
+- **Concurrent streams**: Limited by QUIC implementation
+
+## Monitoring and Metrics
+
+The P2P layer exports comprehensive metrics:
+
+- Connection counts and states
+- Message send/receive rates
+- Artifact pool sizes
+- Download success/failure rates
+- Processing latencies
+
+<Info>
+Metrics are exposed via Prometheus endpoints for monitoring and alerting.
+</Info>
+
+## Security
+
+### Transport Security
+
+- All connections use TLS 1.3 via QUIC
+- Mutual TLS authentication between peers
+- Certificate validation against registry
+
+### Peer Authentication
+
+- Only registry-approved nodes can connect
+- Node identity verified via TLS certificates
+- Registry version consistency checks
+
+## Related APIs
+
+<CardGroup cols={2}>
+  <Card title="HTTP Endpoints" icon="globe" href="/api/networking/http-endpoints">
+    Public-facing HTTP API interfaces
+  </Card>
+  <Card title="XNet Protocol" icon="arrows-left-right" href="/api/networking/xnet">
+    Cross-subnet communication
+  </Card>
+</CardGroup>
+
+## Source Code References
+
+- P2P implementation: `rs/p2p/`
+- QUIC transport: `rs/p2p/quic_transport/src/lib.rs`
+- Peer manager: `rs/p2p/peer_manager/src/lib.rs`
+- Artifact manager: `rs/p2p/artifact_manager/src/lib.rs`
+- Consensus manager: `rs/p2p/consensus_manager/src/lib.rs`
+- P2P interfaces: `rs/interfaces/src/p2p/consensus.rs`

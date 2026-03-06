@@ -1,0 +1,408 @@
+---
+title: Service Nervous System (SNS)
+description: Learn about the Service Nervous System framework for creating decentralized, token-based governance for dapps
+---
+
+A Service Nervous System (SNS) is an algorithmic DAO that allows developers to create decentralized, token-based governance systems for their dapps. Similar to how the Network Nervous System (NNS) controls the Internet Computer, SNSs enable decentralized control of individual dapps.
+
+## Overview
+
+The SNS provides a turnkey solution for dapp developers to hand over control of their applications to a community of token holders. This enables:
+
+- Decentralized decision-making for dapp upgrades and configuration
+- Token-based governance with voting and rewards
+- Community-driven development and management
+- Transparent proposal and execution mechanisms
+
+<Info>
+The SNS framework is implemented in `rs/sns/` and mirrors many concepts from the NNS while being dapp-specific.
+</Info>
+
+## Architecture
+
+### SNS Canisters
+
+An SNS consists of five core canisters working together:
+
+<CardGroup cols={2}>
+  <Card title="Governance Canister" icon="gavel">
+    Enables decentralized decision making through proposals and voting
+  </Card>
+  <Card title="Root Canister" icon="crown">
+    Responsible for upgrading other SNS canisters and controlled dapp canisters
+  </Card>
+  <Card title="Ledger Canister" icon="coins">
+    Determines balances and transactions for the SNS-specific governance token
+  </Card>
+  <Card title="Index Canister" icon="list">
+    Provides a map from ledger accounts to relevant transactions
+  </Card>
+  <Card title="Swap Canister" icon="arrows-rotate">
+    Facilitates initial decentralization swap (token distribution)
+  </Card>
+</CardGroup>
+
+### Control Hierarchy
+
+```
+Governance Canister (Top-level controller)
+    ↓
+Root Canister
+    ↓
+├── Other SNS Canisters (Ledger, Index, Swap)
+└── Dapp Canisters (Your application canisters)
+```
+
+The governance canister controls the root canister, which in turn controls all other SNS canisters and the dapp canisters that the SNS manages.
+
+## Getting an SNS
+
+There are two main ways to deploy an SNS:
+
+<Tabs>
+  <Tab title="NNS-Provided SNS">
+    Get an SNS provided as a system function by the IC through an NNS proposal. This is the recommended approach for production dapps.
+    
+    **Benefits:**
+    - Integrated with IC infrastructure
+    - Automatic decentralization swap
+    - Built-in security guarantees
+    - Community validation through NNS proposal
+  </Tab>
+  <Tab title="Self-Deployed SNS">
+    Deploy an SNS independently and assign control of your dapp canister(s) to it. Useful for testing and specialized use cases.
+    
+    **Considerations:**
+    - Full control over deployment
+    - Manual setup required
+    - Less integration with IC services
+    - Suitable for testing environments
+  </Tab>
+</Tabs>
+
+## SNS Lifecycle
+
+### 1. Preparation Phase
+
+<Steps>
+  <Step title="Design Tokenomics">
+    Define token distribution, voting parameters, and governance rules
+  </Step>
+  <Step title="Test SNS Locally">
+    Deploy and test your SNS in a local development environment
+  </Step>
+  <Step title="Prepare Dapp">
+    Ensure your dapp canisters are ready for decentralized control
+  </Step>
+  <Step title="Create NNS Proposal">
+    Submit a proposal to the NNS for SNS deployment (if using NNS-provided SNS)
+  </Step>
+</Steps>
+
+### 2. Decentralization Swap
+
+The swap canister facilitates the initial token distribution:
+
+```
+Participants contribute ICP
+    ↓
+Swap canister collects contributions
+    ↓
+Once swap conditions are met:
+    ├── Participants receive SNS tokens
+    └── SNS governance becomes active
+    ↓
+Dapp control transfers to SNS
+```
+
+**Swap Parameters:**
+- Minimum and maximum ICP to raise
+- SNS token distribution percentages
+- Neuron parameters (dissolve delay, etc.)
+- Swap duration and conditions
+
+<Warning>
+The decentralization swap is a one-time event. Carefully plan your token distribution and swap parameters.
+</Warning>
+
+### 3. Active Governance
+
+After the swap completes, the SNS becomes fully operational:
+
+- Token holders create neurons by staking SNS tokens
+- Neurons can vote on proposals
+- Proposals can upgrade dapp canisters
+- Voting rewards are distributed to participating neurons
+
+## Governance Features
+
+### Proposals
+
+SNS governance supports various proposal types:
+
+<Accordion title="Upgrade Dapp Canister">
+Upgrade one of the controlled dapp canisters to a new WASM version.
+
+```rust
+// Proposal includes:
+// - Target canister ID
+// - New WASM binary
+// - Upgrade arguments
+// - Execution mode
+```
+</Accordion>
+
+<Accordion title="Transfer SNS Treasury Funds">
+Transfer SNS tokens or ICP from the SNS treasury to another account.
+
+```rust
+// Proposal specifies:
+// - Amount to transfer
+// - Recipient account
+// - Token type (SNS token or ICP)
+```
+</Accordion>
+
+<Accordion title="Manage Nervous System Parameters">
+Modify SNS configuration parameters such as voting thresholds, proposal costs, or neuron parameters.
+
+```rust
+// Examples:
+// - Voting reward rate
+// - Proposal rejection fee
+// - Minimum dissolve delay for voting
+```
+</Accordion>
+
+<Accordion title="Add/Remove Controlled Canisters">
+Change which canisters are under SNS control.
+
+```rust
+// Proposal includes:
+// - Canister ID to add/remove
+// - Updated control configuration
+```
+</Accordion>
+
+### Voting Mechanics
+
+SNS voting follows the same principles as NNS voting:
+
+**Key Features:**
+- Voting power based on staked tokens and dissolve delay
+- Liquid democracy through neuron following
+- Wait-for-quiet algorithm for decision making
+- Voting rewards for participation
+
+```rust
+// From rs/sns/governance/
+// SNS inherits core governance logic from NNS
+// with dapp-specific customizations
+```
+
+## Deploying an SNS
+
+### Using the SNS CLI
+
+<CodeGroup>
+```bash Prepare Configuration
+# Create SNS configuration file
+sns init-config-file
+
+# Edit sns_init.yaml with your parameters:
+# - Token name and symbol
+# - Initial token distribution
+# - Governance parameters
+# - Swap parameters
+```
+
+```bash Deploy to Testnet
+# Deploy SNS to a testnet
+sns deploy --network ic --init-config-file sns_init.yaml
+
+# Monitor deployment progress
+sns deployment-status --network ic
+```
+
+```bash Validate Deployment
+# Check SNS canister IDs
+sns canister-ids --network ic
+
+# Verify governance is active
+sns governance-get-mode --network ic
+```
+</CodeGroup>
+
+### Testing Before Launch
+
+<Warning>
+Always test your SNS thoroughly before launching to mainnet. Use the SNS testnet environment.
+</Warning>
+
+**Testing Checklist:**
+- [ ] Deploy SNS to local replica or testnet
+- [ ] Test proposal submission and voting
+- [ ] Verify dapp canister upgrades work correctly
+- [ ] Test swap mechanics with test tokens
+- [ ] Validate neuron creation and management
+- [ ] Review token distribution and governance parameters
+
+For detailed testing instructions, see the [official SNS testing guide](https://internetcomputer.org/docs/current/developer-docs/integrations/sns/testing/testing-before-launch).
+
+## Managing an SNS
+
+Once launched, the SNS is managed by its community:
+
+### Creating Proposals
+
+```rust
+// Neuron holders submit proposals
+// Each proposal includes:
+// - Action (upgrade, transfer funds, etc.)
+// - Rationale and description
+// - Execution parameters
+```
+
+### Voting on Proposals
+
+Token holders participate in governance:
+
+<Tabs>
+  <Tab title="Direct Voting">
+    Vote directly on proposals through:
+    - NNS dapp frontend
+    - sns-quill CLI tool
+    - Custom frontends
+  </Tab>
+  <Tab title="Automatic Following">
+    Configure neurons to automatically follow trusted voters:
+    ```rust
+    // Set following rules by proposal topic
+    // Neurons vote when majority of followees vote
+    ```
+  </Tab>
+</Tabs>
+
+### Monitoring SNS Health
+
+**Key Metrics:**
+- Total staked tokens
+- Active neurons count
+- Proposal activity
+- Voting participation rate
+- Treasury balances
+
+<Tip>
+For detailed management guidance, see the [SNS management documentation](https://internetcomputer.org/docs/current/developer-docs/integrations/sns/managing/manage-sns-intro).
+</Tip>
+
+## SNS vs NNS Comparison
+
+<table>
+  <thead>
+    <tr>
+      <th>Aspect</th>
+      <th>NNS</th>
+      <th>SNS</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>**Scope**</td>
+      <td>Entire Internet Computer</td>
+      <td>Individual dapp</td>
+    </tr>
+    <tr>
+      <td>**Token**</td>
+      <td>ICP (native utility token)</td>
+      <td>Custom SNS token</td>
+    </tr>
+    <tr>
+      <td>**Control**</td>
+      <td>Network infrastructure, subnets, nodes</td>
+      <td>Dapp canisters and configuration</td>
+    </tr>
+    <tr>
+      <td>**Deployment**</td>
+      <td>Single instance (genesis)</td>
+      <td>Multiple instances (one per dapp)</td>
+    </tr>
+    <tr>
+      <td>**Governance**</td>
+      <td>IC-wide proposals</td>
+      <td>Dapp-specific proposals</td>
+    </tr>
+  </tbody>
+</table>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Design Clear Tokenomics">
+    - Define fair token distribution
+    - Set appropriate dissolve delays
+    - Balance decentralization with efficiency
+    - Consider long-term sustainability
+  </Accordion>
+  
+  <Accordion title="Test Thoroughly">
+    - Deploy to testnet first
+    - Simulate various governance scenarios
+    - Test edge cases and failure modes
+    - Validate upgrade mechanisms
+  </Accordion>
+  
+  <Accordion title="Engage Your Community">
+    - Communicate clearly about governance
+    - Provide documentation and guides
+    - Foster active participation
+    - Be transparent about changes
+  </Accordion>
+  
+  <Accordion title="Plan for Evolution">
+    - Build upgrade mechanisms
+    - Allow parameter adjustments
+    - Design for flexibility
+    - Consider future governance needs
+  </Accordion>
+</AccordionGroup>
+
+## Source Code Reference
+
+<CodeGroup>
+```rust SNS Canisters
+// Implementation in rs/sns/
+// - governance/: SNS governance logic
+// - root/: Root canister for upgrades
+// - swap/: Decentralization swap mechanism
+// - ledger/: SNS-specific token ledger (separate repo)
+```
+
+```adoc Documentation
+// rs/sns/README.md
+// Comprehensive SNS overview and architecture
+// Deployment and management instructions
+```
+</CodeGroup>
+
+**Key Directories:**
+- `rs/sns/governance/`: SNS governance canister
+- `rs/sns/root/`: SNS root canister for managing upgrades
+- `rs/sns/swap/`: Decentralization swap canister
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="SNS Documentation" icon="book" href="https://internetcomputer.org/docs/current/developer-docs/integrations/sns/">
+    Official SNS integration guide
+  </Card>
+  <Card title="SNS Checklist" icon="list-check" href="https://internetcomputer.org/docs/current/developer-docs/integrations/sns/tokenomics/sns-checklist">
+    Complete checklist for SNS deployment
+  </Card>
+  <Card title="Testing Guide" icon="flask" href="https://internetcomputer.org/docs/current/developer-docs/integrations/sns/testing/testing-before-launch">
+    How to test your SNS before launch
+  </Card>
+  <Card title="Network Nervous System" icon="network-wired" href="/core/nns">
+    Learn about the NNS governance system
+  </Card>
+</CardGroup>

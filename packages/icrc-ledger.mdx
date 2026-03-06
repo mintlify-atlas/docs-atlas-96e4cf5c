@@ -1,0 +1,516 @@
+---
+title: ICRC Ledger Packages
+description: Client libraries and types for interacting with ICRC token standard ledgers
+---
+
+The ICRC ledger packages provide comprehensive support for interacting with DFINITY's implementation of the [ICRC-1](https://github.com/dfinity/ICRC-1/) fungible token standard on the Internet Computer.
+
+## Overview
+
+These packages enable developers to build token-based applications using the standardized ICRC-1 token interface, which provides interoperability between different token implementations on the Internet Computer.
+
+<Info>
+ICRC-1 is the Internet Computer's standard for fungible tokens, similar to ERC-20 on Ethereum.
+</Info>
+
+## Packages
+
+### ICRC Ledger Types
+
+**Package**: `icrc-ledger-types` v0.1.12
+
+Provides type definitions for the ICRC-1 token standard.
+
+```toml
+[dependencies]
+icrc-ledger-types = "0.1.12"
+```
+
+**Features:**
+- ICRC-1 account types and standards
+- Transfer argument types
+- Balance and metadata types
+- ICRC-2 approve and transfer-from types
+- ICRC-3 block archive types
+- Serialization support
+
+### ICRC Ledger Client
+
+**Package**: `icrc-ledger-client` v0.1.4
+
+Client library for canister code to interact with ICRC-1 ledgers.
+
+```toml
+[dependencies]
+icrc-ledger-client = "0.1.4"
+```
+
+**Use when:**
+- Building canister smart contracts that need to interact with tokens
+- Implementing token payment flows in canisters
+- Checking balances from canister code
+
+### ICRC Ledger Agent
+
+**Package**: `icrc-ledger-agent` v0.1.4
+
+Agent library for applications to interact with ICRC-1 ledgers.
+
+```toml
+[dependencies]
+icrc-ledger-agent = "0.1.4"
+```
+
+**Use when:**
+- Building frontend applications
+- Creating command-line tools
+- Implementing backend services that interact with tokens
+
+### ICRC Ledger Client CDK
+
+**Package**: `icrc-ledger-client-cdk`
+
+CDK-specific utilities for ICRC-1 ledger interactions optimized for the Internet Computer Canister Development Kit.
+
+```toml
+[dependencies]
+icrc-ledger-client-cdk = "0.1"
+```
+
+### ICRC CBOR
+
+**Package**: `icrc-cbor` v0.1.0
+
+CBOR encoding and decoding support for ICRC types.
+
+```toml
+[dependencies]
+icrc-cbor = "0.1.0"
+```
+
+## ICRC-1 Token Standard
+
+The ICRC-1 standard defines a minimal interface for fungible tokens:
+
+### Core Methods
+
+- `icrc1_name()` - Returns the token name
+- `icrc1_symbol()` - Returns the token symbol
+- `icrc1_decimals()` - Returns the number of decimals
+- `icrc1_fee()` - Returns the transfer fee
+- `icrc1_metadata()` - Returns token metadata
+- `icrc1_total_supply()` - Returns total supply
+- `icrc1_balance_of(account)` - Returns account balance
+- `icrc1_transfer(args)` - Transfers tokens
+
+### Account Format
+
+ICRC-1 uses a standardized account format:
+
+```rust
+use icrc_ledger_types::icrc1::account::Account;
+use candid::Principal;
+
+// Account with owner only
+let account = Account {
+    owner: Principal::from_text("aaaaa-aa").unwrap(),
+    subaccount: None,
+};
+
+// Account with subaccount
+let account_with_sub = Account {
+    owner: Principal::from_text("aaaaa-aa").unwrap(),
+    subaccount: Some([1u8; 32]),
+};
+```
+
+## Using ICRC Ledger Agent
+
+The agent library is designed for use in applications (non-canister code):
+
+### Setup
+
+```rust
+use ic_agent::Agent;
+use icrc_ledger_agent::Icrc1Agent;
+use candid::Principal;
+
+// Create an IC agent
+let agent = Agent::builder()
+    .with_url("https://ic0.app")
+    .build()
+    .unwrap();
+
+// Create ICRC-1 ledger agent
+let ledger_canister_id = Principal::from_text("ryjl3-tyaaa-aaaaa-aaaba-cai").unwrap();
+let icrc_agent = Icrc1Agent {
+    agent,
+    ledger_canister_id,
+};
+```
+
+### Query Balance
+
+```rust
+use icrc_ledger_agent::CallMode;
+use icrc_ledger_types::icrc1::account::Account;
+
+let account = Account {
+    owner: my_principal,
+    subaccount: None,
+};
+
+// Query (fast, not certified)
+let balance = icrc_agent.balance_of(account, CallMode::Query)
+    .await
+    .unwrap();
+
+println!("Balance: {}", balance);
+
+// Update (certified, slower)
+let certified_balance = icrc_agent.balance_of(account, CallMode::Update)
+    .await
+    .unwrap();
+```
+
+### Transfer Tokens
+
+```rust
+use icrc_ledger_types::icrc1::transfer::{TransferArg, TransferError};
+use candid::Nat;
+
+let transfer_args = TransferArg {
+    from_subaccount: None,
+    to: Account {
+        owner: recipient_principal,
+        subaccount: None,
+    },
+    fee: None, // Use default fee
+    created_at_time: None,
+    memo: None,
+    amount: Nat::from(1_000_000u64), // 1 token with 6 decimals
+};
+
+let result = icrc_agent.transfer(transfer_args)
+    .await
+    .unwrap();
+
+match result {
+    Ok(block_index) => println!("Transfer successful at block {}", block_index),
+    Err(TransferError::InsufficientFunds { balance }) => {
+        println!("Insufficient funds. Balance: {}", balance);
+    },
+    Err(e) => println!("Transfer failed: {:?}", e),
+}
+```
+
+### Get Token Metadata
+
+```rust
+// Get token name
+let name = icrc_agent.name(CallMode::Query).await.unwrap();
+println!("Token name: {}", name);
+
+// Get token symbol
+let symbol = icrc_agent.symbol(CallMode::Query).await.unwrap();
+println!("Token symbol: {}", symbol);
+
+// Get decimals
+let decimals = icrc_agent.decimals(CallMode::Query).await.unwrap();
+println!("Decimals: {}", decimals);
+
+// Get all metadata
+let metadata = icrc_agent.metadata(CallMode::Query).await.unwrap();
+for (key, value) in metadata {
+    println!("{}: {:?}", key, value);
+}
+```
+
+## Using ICRC Ledger Client
+
+The client library is designed for use in canister code:
+
+### Transfer from Canister
+
+```rust
+use icrc_ledger_client::ICRC1Client;
+use icrc_ledger_types::icrc1::account::Account;
+use icrc_ledger_types::icrc1::transfer::TransferArg;
+use candid::{Nat, Principal};
+
+// In your canister code
+let ledger_id = Principal::from_text("ryjl3-tyaaa-aaaaa-aaaba-cai").unwrap();
+let client = ICRC1Client::new(ledger_id);
+
+let args = TransferArg {
+    from_subaccount: None,
+    to: Account {
+        owner: recipient,
+        subaccount: None,
+    },
+    fee: None,
+    created_at_time: None,
+    memo: None,
+    amount: Nat::from(1_000_000u64),
+};
+
+// Make inter-canister call
+let result = client.transfer(args).await;
+```
+
+### Check Balance from Canister
+
+```rust
+let account = Account {
+    owner: some_principal,
+    subaccount: None,
+};
+
+let balance = client.balance_of(account).await.unwrap();
+```
+
+## ICRC-2: Approve and Transfer From
+
+ICRC-2 extends ICRC-1 with approval-based transfers:
+
+### Approve Spending
+
+```rust
+use icrc_ledger_types::icrc2::approve::{ApproveArgs, ApproveError};
+
+let approve_args = ApproveArgs {
+    from_subaccount: None,
+    spender: Account {
+        owner: spender_principal,
+        subaccount: None,
+    },
+    amount: Nat::from(1_000_000u64),
+    expected_allowance: None,
+    expires_at: None,
+    fee: None,
+    memo: None,
+    created_at_time: None,
+};
+
+let result = icrc_agent.approve(approve_args).await.unwrap();
+match result {
+    Ok(block_index) => println!("Approval successful at block {}", block_index),
+    Err(e) => println!("Approval failed: {:?}", e),
+}
+```
+
+### Check Allowance
+
+```rust
+use icrc_ledger_types::icrc2::allowance::AllowanceArgs;
+
+let allowance_args = AllowanceArgs {
+    account: Account {
+        owner: owner_principal,
+        subaccount: None,
+    },
+    spender: Account {
+        owner: spender_principal,
+        subaccount: None,
+    },
+};
+
+let allowance = icrc_agent.allowance(allowance_args).await.unwrap();
+println!("Allowance: {}", allowance.allowance);
+```
+
+### Transfer From
+
+```rust
+use icrc_ledger_types::icrc2::transfer_from::{TransferFromArgs, TransferFromError};
+
+let transfer_from_args = TransferFromArgs {
+    spender_subaccount: None,
+    from: Account {
+        owner: from_principal,
+        subaccount: None,
+    },
+    to: Account {
+        owner: to_principal,
+        subaccount: None,
+    },
+    amount: Nat::from(500_000u64),
+    fee: None,
+    memo: None,
+    created_at_time: None,
+};
+
+let result = icrc_agent.transfer_from(transfer_from_args)
+    .await
+    .unwrap();
+```
+
+## ICRC-3: Block Archive
+
+ICRC-3 provides access to transaction history:
+
+### Query Blocks
+
+```rust
+use icrc_ledger_types::icrc3::blocks::{GetBlocksRequest, GetBlocksResponse};
+
+let request = GetBlocksRequest {
+    start: 0,
+    length: 100,
+};
+
+let response: GetBlocksResponse = icrc_agent
+    .get_blocks(request)
+    .await
+    .unwrap();
+
+for block in response.blocks {
+    println!("Block: {:?}", block);
+}
+```
+
+## Working with Types
+
+### Account Type
+
+```rust
+use icrc_ledger_types::icrc1::account::Account;
+use candid::Principal;
+
+// Create account
+let account = Account {
+    owner: Principal::from_text("aaaaa-aa").unwrap(),
+    subaccount: None,
+};
+
+// With subaccount
+let mut subaccount = [0u8; 32];
+subaccount[0] = 1;
+
+let account_with_sub = Account {
+    owner: Principal::from_text("aaaaa-aa").unwrap(),
+    subaccount: Some(subaccount),
+};
+```
+
+### Amount Handling
+
+```rust
+use candid::Nat;
+use num_bigint::BigUint;
+
+// From u64
+let amount = Nat::from(1_000_000u64);
+
+// From BigUint
+let big_amount = Nat::from(BigUint::from(1_000_000_000_000u64));
+
+// Convert to u64 (if small enough)
+let value: u64 = amount.0.to_u64_digits()[0];
+```
+
+### Transfer Arguments
+
+```rust
+use icrc_ledger_types::icrc1::transfer::TransferArg;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+let now = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap()
+    .as_nanos() as u64;
+
+let args = TransferArg {
+    from_subaccount: None,
+    to: destination_account,
+    fee: Some(Nat::from(10_000u64)), // Explicit fee
+    created_at_time: Some(now),
+    memo: Some(vec![1, 2, 3, 4].into()), // Custom memo
+    amount: Nat::from(1_000_000u64),
+};
+```
+
+## Error Handling
+
+### Transfer Errors
+
+```rust
+use icrc_ledger_types::icrc1::transfer::TransferError;
+
+match transfer_result {
+    Ok(block_index) => {
+        println!("Success! Block: {}", block_index);
+    },
+    Err(TransferError::BadFee { expected_fee }) => {
+        println!("Wrong fee. Expected: {}", expected_fee);
+    },
+    Err(TransferError::InsufficientFunds { balance }) => {
+        println!("Not enough funds. Balance: {}", balance);
+    },
+    Err(TransferError::TooOld) => {
+        println!("Transaction too old");
+    },
+    Err(TransferError::Duplicate { duplicate_of }) => {
+        println!("Duplicate transaction: {}", duplicate_of);
+    },
+    Err(e) => println!("Other error: {:?}", e),
+}
+```
+
+## Best Practices
+
+<Check>Always check balances before attempting transfers</Check>
+<Check>Handle all error cases explicitly</Check>
+<Check>Use `created_at_time` to prevent duplicate transactions</Check>
+<Check>Use memos to track transaction purposes</Check>
+<Check>Consider using subaccounts for logical separation</Check>
+<Check>Use CallMode::Update for critical operations requiring certification</Check>
+
+<Warning>
+Always verify token decimals when displaying amounts to users. A token with 8 decimals represents 1 token as 100,000,000 base units.
+</Warning>
+
+## Testing with PocketIC
+
+Test ICRC ledger interactions locally:
+
+```rust
+use pocket_ic::PocketIc;
+use icrc_ledger_types::icrc1::transfer::TransferArg;
+
+#[test]
+fn test_token_transfer() {
+    let pic = PocketIc::new();
+    
+    // Deploy ledger canister
+    let ledger_id = pic.create_canister();
+    pic.add_cycles(ledger_id, 2_000_000_000_000);
+    
+    let ledger_wasm = std::fs::read("icrc1-ledger.wasm").unwrap();
+    pic.install_canister(ledger_id, ledger_wasm, vec![], None);
+    
+    // Test transfers
+    let args = TransferArg {
+        from_subaccount: None,
+        to: destination,
+        fee: None,
+        created_at_time: None,
+        memo: None,
+        amount: Nat::from(1_000_000u64),
+    };
+    
+    let result = pic.update_call(
+        ledger_id,
+        Principal::anonymous(),
+        "icrc1_transfer",
+        encode_args((args,)).unwrap(),
+    ).unwrap();
+}
+```
+
+## Learn More
+
+- [ICRC-1 Standard](https://github.com/dfinity/ICRC-1/)
+- [ICP Ledger Documentation](https://internetcomputer.org/docs/current/developer-docs/defi/tokens/ledger/)
+- [Token Deploy Tutorial](https://internetcomputer.org/docs/current/developer-docs/defi/tokens/deploy/)
+- [API Documentation](https://docs.rs/icrc-ledger-types/)

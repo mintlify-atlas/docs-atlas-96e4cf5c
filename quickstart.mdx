@@ -1,80 +1,362 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get up and running with the Internet Computer replica locally"
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+The Internet Computer Protocol (ICP) replica is the blockchain node software that runs the Internet Computer. This guide walks you through building and running the replica on your local machine.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+**Target Audience**: This guide is for systems engineers, security engineers, and cryptographers who want to build and run the replica from source. If you're an app developer looking to deploy canisters, use the [Canister SDK](https://sdk.dfinity.org/docs/quickstart/quickstart-intro.html) instead.
 </Note>
+
+## Prerequisites
+
+Before building the replica, ensure your system meets these requirements:
+
+### System Requirements
+
+<CardGroup cols={2}>
+  <Card title="Hardware" icon="microchip">
+    - x86-64 based system
+    - Minimum 16 GB RAM/SWAP
+    - 100 GB available disk space
+  </Card>
+  <Card title="Software" icon="laptop-code">
+    - Ubuntu 22.04 or newer
+    - Podman installed and configured
+    - Git for cloning the repository
+  </Card>
+</CardGroup>
+
+### Install Podman
+
+Podman is required for the containerized build environment:
+
+<CodeGroup>
+```bash Ubuntu 22.04+
+sudo apt update
+sudo apt install -y podman
+```
+
+```bash Ubuntu 20.10-21.10
+# Add Kubic repository for newer Podman version
+. /etc/os-release
+sudo sh -c "echo 'deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list"
+wget -nv https://download.opensuse.org/repositories/devel:kubic:libcontainers:stable/xUbuntu_${VERSION_ID}/Release.key -O- | sudo apt-key add -
+sudo apt update
+sudo apt install -y podman
+```
+</CodeGroup>
+
+Verify Podman is working:
+
+```bash
+podman info
+```
+
+## Clone the Repository
+
+<Steps>
+  <Step title="Clone the IC repository">
+    ```bash
+    git clone https://github.com/dfinity/ic.git
+    cd ic
+    ```
+  </Step>
+
+  <Step title="Verify the repository structure">
+    ```bash
+    ls -la
+    # You should see directories like: rs/, ic-os/, ci/, bazel/, etc.
+    ```
+  </Step>
+</Steps>
+
+## Building the Replica
+
+The IC repository uses Bazel as its build system, with a containerized build environment for reproducibility.
+
+### Build Environment
+
+The repository provides a containerized development environment that includes all necessary dependencies:
+
+<Steps>
+  <Step title="Enter the development container">
+    The `container-run.sh` script automatically pulls or builds the container image and drops you into a shell:
+
+    ```bash
+    ./ci/container/container-run.sh
+    ```
+
+    This command will:
+    - Check for Podman installation
+    - Pull the `ic-dev` container image from GitHub Container Registry
+    - Mount your repository and cache directories
+    - Start an interactive shell inside the container
+
+    <Note>
+    The first run will download a container image (~2-4 GB). Subsequent runs will reuse the cached image.
+    </Note>
+  </Step>
+
+  <Step title="Build the replica binary">
+    Inside the container, use Bazel to build the replica:
+
+    ```bash
+    bazel build //rs/replica:replica
+    ```
+
+    The replica binary will be available at:
+    ```
+    bazel-bin/rs/replica/replica
+    ```
+
+    <Accordion title="Build specific components">
+      You can also build specific subsets of the IC:
+
+      **Build only binaries:**
+      ```bash
+      bazel build //publish/binaries:bundle
+      ```
+
+      **Build only canisters:**
+      ```bash
+      bazel build //publish/canisters:bundle
+      ```
+
+      **Build IC-OS images:**
+      ```bash
+      bazel build //ic-os/guestos/envs/prod:bundle-update
+      bazel build //ic-os/hostos/envs/prod:bundle-update
+      bazel build //ic-os/setupos/envs/prod:bundle
+      ```
+    </Accordion>
+  </Step>
+
+  <Step title="Alternative: Build using the build script">
+    For a complete build with artifacts organized for you, exit the container and use the build script:
+
+    ```bash
+    # Build binaries only
+    ./ci/container/build-ic.sh -b
+
+    # Build canisters only
+    ./ci/container/build-ic.sh -c
+
+    # Build IC-OS images (includes binaries and canisters)
+    ./ci/container/build-ic.sh -i
+
+    # Build both binaries and canisters
+    ./ci/container/build-ic.sh -b -c
+    ```
+
+    All artifacts will be organized in the `artifacts/` directory:
+    ```
+    artifacts/
+    ├── release/        # Binaries and SHA256SUMS
+    ├── canisters/      # Canister WASMs and SHA256SUMS
+    └── icos/           # IC-OS disk images
+        ├── guestos/
+        ├── hostos/
+        └── setupos/
+    ```
+  </Step>
+</Steps>
+
+## Verifying the Build
+
+<Steps>
+  <Step title="Check the replica binary">
+    Verify the replica binary was built successfully:
+
+    ```bash
+    ./ci/container/container-run.sh
+    ls -lh bazel-bin/rs/replica/replica
+    ```
+
+    You should see the binary with a size of several hundred MB.
+  </Step>
+
+  <Step title="Verify binary hash">
+    Check the integrity of built binaries using SHA256 checksums:
+
+    ```bash
+    # If you used build-ic.sh -b
+    cat artifacts/release/SHA256SUMS
+    ```
+
+    <Accordion title="Example SHA256SUMS output">
+      ```
+      a1b2c3d4e5f6... replica
+      f6e5d4c3b2a1... canister_sandbox
+      1a2b3c4d5e6f... ic-starter
+      ...
+      ```
+    </Accordion>
+  </Step>
+
+  <Step title="Run a basic test">
+    Verify the build environment by running some tests:
+
+    ```bash
+    ./ci/container/container-run.sh
+    
+    # Run a specific test
+    bazel test //rs/types/types:types_test
+    
+    # Run all non-system tests (recommended for local development)
+    bazel test //... --test_tag_filters=-system_test
+    ```
+
+    <Warning>
+    Don't run `system_test` tagged tests locally - they require infrastructure only available in the DFINITY network.
+    </Warning>
+  </Step>
+</Steps>
+
+## Running the Replica
+
+<Warning>
+Running a standalone replica locally requires additional configuration and is primarily used for development and testing. For deploying canisters to a local environment, use the [Canister SDK's dfx tool](https://sdk.dfinity.org/docs/quickstart/quickstart-intro.html) which includes a pre-configured local replica.
+</Warning>
+
+The replica binary (`bazel-bin/rs/replica/replica`) is the core Internet Computer node software. It requires:
+
+- A valid configuration file specifying network topology
+- Cryptographic keys for the node
+- State directories for blockchain data
+- Connection to other replicas (or specific test configuration)
+
+### Development Testing
+
+For development and testing purposes, you can:
+
+<Tabs>
+  <Tab title="Unit Tests">
+    Run individual component tests:
+    ```bash
+    ./ci/container/container-run.sh
+    bazel test //rs/replica:replica_test
+    ```
+  </Tab>
+
+  <Tab title="Integration Tests">
+    Run integration tests that exercise the replica:
+    ```bash
+    ./ci/container/container-run.sh
+    bazel test //rs/replica:replica_integration
+    ```
+  </Tab>
+
+  <Tab title="Development Images">
+    Build and test with development IC-OS images:
+    ```bash
+    bazel build //ic-os/guestos/envs/dev/...
+    # Dev images include console access (username: root, password: root)
+    ```
+  </Tab>
+</Tabs>
+
+## Code Quality Checks
+
+Before submitting changes, run the linting and formatting checks:
+
+```bash
+./ci/container/container-run.sh
+
+# Rust linting
+./ci/scripts/rust-lint.sh
+
+# Or run individual checks
+cargo clippy --all-targets --all-features
+cargo fmt --all -- --check
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="diagram-project" href="/architecture/overview">
+    Understand the replica's internal architecture
+  </Card>
+  <Card title="Development" icon="code" href="/development/contributing">
+    Learn about contributing to the codebase
+  </Card>
+  <Card title="Testing" icon="vial" href="/development/testing">
+    Explore the testing infrastructure
+  </Card>
+  <Card title="IC-OS" icon="server" href="/ic-os/overview">
+    Deep dive into the operating system images
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<Accordion title="Podman is not responding">
+If `podman info` fails, ensure the Podman service is running:
+
+```bash
+systemctl --user status podman.socket
+systemctl --user start podman.socket
+```
+
+For rootless Podman issues, check:
+```bash
+podman system migrate
+```
+</Accordion>
+
+<Accordion title="Build fails with 'disk space' error">
+The build process requires significant disk space. Check available space:
+
+```bash
+df -h $HOME
+```
+
+If running low, clean up Bazel cache:
+```bash
+./ci/container/container-run.sh
+bazel clean --expunge
+```
+</Accordion>
+
+<Accordion title="Container image pull fails">
+If the container image pull fails, you can build it locally:
+
+```bash
+./ci/container/build-image.sh --image ic-dev
+```
+
+This will build the container image from the Dockerfile in `ci/container/`.
+</Accordion>
+
+<Accordion title="'Working directory is not clean' error">
+The build script requires a clean Git working directory:
+
+```bash
+git status
+# Commit or stash your changes
+git stash
+./ci/container/build-ic.sh -b
+git stash pop
+```
+</Accordion>
+
+## System Architecture Notes
+
+The replica is a complex distributed system with multiple components:
+
+- **Consensus Layer**: Implements the Internet Computer consensus protocol
+- **Execution Environment**: Runs WebAssembly canisters
+- **Message Routing**: Handles cross-subnet communication (XNet)
+- **Crypto Layer**: Provides threshold cryptography and signatures
+- **Networking**: P2P communication between replicas
+- **State Manager**: Manages blockchain state and checkpoints
+
+The binary uses multiple Tokio runtimes for isolation between components and runs sandboxed processes for security-critical operations like cryptography and canister execution.
+
+## Additional Resources
+
+- **Repository**: [github.com/dfinity/ic](https://github.com/dfinity/ic)
+- **Technical Documentation**: [IC Interface Specification](https://sdk.dfinity.org/docs/interface-spec/index.html)
+- **Community Forum**: [forum.dfinity.org](https://forum.dfinity.org/)
+- **Rust Docs**: [docs.dfinity.org](https://docs.dfinity.org/)

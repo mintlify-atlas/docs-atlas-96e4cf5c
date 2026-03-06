@@ -1,0 +1,583 @@
+---
+title: Cryptography
+description: Explore the Internet Computer's cryptographic foundations including chain-key cryptography, threshold signatures, and key management
+---
+
+The Internet Computer's cryptography component provides the security foundations for the entire protocol. This includes chain-key cryptography, threshold signatures, key management, and various cryptographic primitives used throughout the system.
+
+## Overview
+
+The crypto component is organized into several layers:
+
+<CardGroup cols={2}>
+  <Card title="Crypto Component" icon="lock">
+    Main interface used by replicas for all cryptographic operations
+  </Card>
+  <Card title="Threshold Signatures" icon="users">
+    BLS12-381 based threshold signatures for consensus and certification
+  </Card>
+  <Card title="Chain-Key Crypto" icon="key">
+    Threshold ECDSA/Schnorr for signing transactions on other chains
+  </Card>
+  <Card title="TLS & Node Keys" icon="certificate">
+    Transport security and node identity management
+  </Card>
+</CardGroup>
+
+<Info>
+The cryptography implementation is located in `rs/crypto/` with the main component in `src/` and supporting libraries in subdirectories.
+</Info>
+
+## Architecture
+
+The crypto component is structured as follows:
+
+```
+Crypto Component (rs/crypto/src/)
+├── SecretKeyStore: Manages and protects secret keys
+├── Public Interfaces: TLS, signing, verification
+└── Internal Implementation (rs/crypto/internal/)
+    ├── Crypto Service Provider (CSP)
+    ├── Threshold Signature Schemes
+    └── Basic Signature Schemes
+```
+
+### Key Components
+
+<Tabs>
+  <Tab title="Crypto Component">
+    **Location:** `rs/crypto/src/`
+    
+    The main interface used by replica components:
+    - Manages secret keys through SecretKeyStore
+    - Provides signing and verification operations
+    - Handles TLS connections
+    - Interfaces with consensus and other components
+    
+    ```rust
+    // From rs/crypto/README.adoc:
+    // "Crypto Component used by a replica. It contains
+    // SecretKeyStore, which manages and protects the
+    // secret keys owned by a node."
+    ```
+  </Tab>
+  
+  <Tab title="Internal Libraries">
+    **Location:** `rs/crypto/internal/`
+    
+    Implementation of cryptographic primitives:
+    - Should not be used directly outside `/crypto/`
+    - Contains actual cryptographic algorithms
+    - Provides low-level crypto operations
+    - Optimized for security and performance
+  </Tab>
+  
+  <Tab title="Public Crates">
+    WebAssembly-compatible utilities:
+    - `ic-crypto-sha`: SHA256, SHA224 hashing
+    - `ic-crypto-tree-hash`: Hash trees and witnesses
+    - `ic-crypto-node-key-validation`: Node key validation
+    - `ic-crypto-utils-*`: Signature utilities
+  </Tab>
+</Tabs>
+
+## Chain-Key Cryptography
+
+Chain-key cryptography is a cornerstone innovation of the Internet Computer, enabling:
+
+- Single public key for the entire IC
+- Fast finality and certified queries
+- Threshold signatures without key reconstruction
+- Integration with other blockchains (Bitcoin, Ethereum)
+
+### Threshold Signatures (BLS12-381)
+
+The IC uses BLS signatures on the BLS12-381 curve for:
+
+<AccordionGroup>
+  <Accordion title="Consensus">
+    Random beacon and block finalization:
+    ```rust
+    // Nodes collectively sign blocks
+    // Threshold of signatures creates valid block signature
+    // Single signature verifiable against subnet public key
+    ```
+  </Accordion>
+  
+  <Accordion title="Certification">
+    State certification and query responses:
+    ```rust
+    // Subnet signs state root hash
+    // Queries return certified responses
+    // Clients verify against subnet public key
+    ```
+  </Accordion>
+  
+  <Accordion title="DKG (Distributed Key Generation)">
+    Non-interactive DKG for key generation:
+    ```rust
+    // Nodes generate key shares without interaction
+    // Threshold of shares can produce signatures
+    // Public key computed from commitments
+    ```
+    
+    **From rs/crypto/internal/crypto_lib/threshold_sig/bls12_381/:**
+    - Forward-secure encryption for dealing
+    - NIZK proofs for correctness
+    - Complaint mechanism for cheating dealers
+  </Accordion>
+</AccordionGroup>
+
+### Properties
+
+<CardGroup cols={2}>
+  <Card title="Non-Interactive" icon="forward">
+    Key generation doesn't require synchronous communication rounds
+  </Card>
+  <Card title="Threshold Security" icon="shield">
+    Requires t+1 of n shares to produce signatures
+  </Card>
+  <Card title="Unique Signatures" icon="fingerprint">
+    Each message has exactly one valid signature
+  </Card>
+  <Card title="Efficient Verification" icon="bolt">
+    Single signature verification regardless of signers
+  </Card>
+</CardGroup>
+
+## Chain-Key Signatures
+
+The IC can sign transactions for other blockchains using threshold cryptography:
+
+### Threshold ECDSA
+
+<Tabs>
+  <Tab title="Overview">
+    Enables canisters to have ECDSA keys and sign transactions:
+    
+    **Supported Curves:**
+    - secp256k1 (Bitcoin, Ethereum)
+    - secp256r1 (Enterprise applications)
+    
+    **Use Cases:**
+    - Bitcoin integration
+    - Ethereum interoperability
+    - Cross-chain DeFi
+    - Multi-chain wallets
+  </Tab>
+  
+  <Tab title="Key Derivation">
+    Hierarchical key derivation for canisters:
+    ```rust
+    // Each canister can derive multiple keys
+    // Derivation path includes:
+    // - Master key ID
+    // - Canister ID
+    // - Derivation path (BIP32-like)
+    
+    // From rs/crypto/internal/crypto_lib/threshold_sig/
+    //      canister_threshold_sig/src/signing/key_derivation.rs
+    ```
+  </Tab>
+  
+  <Tab title="Signing Process">
+    Threshold signing workflow:
+    ```
+    1. Canister requests signature via System API
+    2. Request goes to subnet with threshold key
+    3. Nodes perform multi-party computation
+    4. Signature shares are combined
+    5. Final signature returned to canister
+    ```
+    
+    <Warning>
+    Signing operations have higher latency (several seconds) due to threshold protocol execution.
+    </Warning>
+  </Tab>
+</Tabs>
+
+### Threshold Schnorr
+
+Support for Schnorr signatures:
+
+- **BIP-340** for Bitcoin Taproot
+- **Ed25519** for other applications
+- Similar threshold protocol to ECDSA
+- Optimized for specific use cases
+
+```rust
+// From rs/crypto/internal/crypto_lib/threshold_sig/
+//      canister_threshold_sig/src/signing/
+// - ecdsa.rs: ECDSA signing
+// - bip340.rs: Schnorr BIP-340
+// - eddsa.rs: Ed25519 signing
+```
+
+## Internet Computer Distributed Key Generation (IDKG)
+
+IDKG is the protocol for generating and managing threshold keys:
+
+<Steps>
+  <Step title="Dealing Phase">
+    Dealers create and distribute encrypted key shares:
+    ```rust
+    // Each dealer creates polynomial commitments
+    // Encrypts shares for each receiver
+    // Includes zero-knowledge proofs
+    ```
+  </Step>
+  
+  <Step title="Verification Phase">
+    Receivers verify dealings:
+    ```rust
+    // Check NIZK proofs
+    // Verify encryption correctness
+    // Submit complaints if invalid
+    ```
+  </Step>
+  
+  <Step title="Transcript Creation">
+    Consensus on valid dealings:
+    ```rust
+    // Aggregate dealings from threshold of dealers
+    // Create transcript with public verification data
+    // Receivers can now reconstruct key shares
+    ```
+  </Step>
+  
+  <Step title="Key Derivation">
+    Generate signing keys from transcript:
+    ```rust
+    // Each node derives its key share
+    // Public key computed from transcript
+    // Ready for threshold signing
+    ```
+  </Step>
+</Steps>
+
+**Protocol Features:**
+
+<CardGroup cols={2}>
+  <Card title="Resharing" icon="arrows-rotate">
+    Transfer key shares to new node set without revealing the key
+  </Card>
+  <Card title="Multiple Keys" icon="layer-group">
+    Support multiple threshold keys on same subnet
+  </Card>
+  <Card title="Forward Security" icon="shield-check">
+    Old key shares cannot recover future keys
+  </Card>
+  <Card title="Verifiable" icon="check-double">
+    All operations include cryptographic proofs
+  </Card>
+</CardGroup>
+
+## Key Management
+
+### SecretKeyStore
+
+The crypto component manages node secret keys:
+
+```rust
+// From rs/crypto/src/
+// SecretKeyStore provides:
+// - Secure storage of secret keys
+// - Key generation
+// - Access control
+// - Key rotation support
+```
+
+**Stored Keys:**
+- Node signing keys (Ed25519)
+- Committee signing keys (multi-signature)
+- DKG encryption keys (forward-secure)
+- TLS certificate keys
+- Threshold key shares
+
+### Node Key Validation
+
+Validation of node public keys:
+
+```rust
+// rs/crypto/node_key_validation/
+// - Verify key format and validity
+// - Check key uniqueness
+// - Validate cryptographic properties
+// - Used during node registration
+```
+
+<Tip>
+The `ic-crypto-node-key-validation` crate is WebAssembly-compatible and can be used in canisters.
+</Tip>
+
+## Cryptographic Primitives
+
+### Hashing
+
+<Tabs>
+  <Tab title="SHA-2 Family">
+    **Location:** `rs/crypto/sha/`
+    
+    Standard hash functions:
+    ```rust
+    // SHA-256: 256-bit output
+    // SHA-224: Truncated SHA-256
+    // Used for: General hashing, IDs, commitments
+    ```
+  </Tab>
+  
+  <Tab title="Hash Trees">
+    **Location:** `rs/crypto/tree_hash/`
+    
+    Merkle tree construction:
+    ```rust
+    // Labeled hash trees for state
+    // Witnesses for certified queries
+    // Partial tree reconstruction
+    
+    // From rs/crypto/README.adoc:
+    // ic-crypto-tree-hash: "computation of hash
+    // trees and witnesses"
+    ```
+  </Tab>
+  
+  <Tab title="Hash-to-Curve">
+    **Location:** `rs/crypto/internal/crypto_lib/threshold_sig/canister_threshold_sig/`
+    
+    Hashing to elliptic curve points:
+    ```rust
+    // Used in threshold ECDSA
+    // Deterministic point generation
+    // Domain separation
+    ```
+  </Tab>
+</Tabs>
+
+### Signature Schemes
+
+<table>
+  <thead>
+    <tr>
+      <th>Scheme</th>
+      <th>Use Case</th>
+      <th>Location</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>**BLS12-381**</td>
+      <td>Threshold signatures, consensus, certification</td>
+      <td>`rs/crypto/internal/crypto_lib/threshold_sig/bls12_381/`</td>
+    </tr>
+    <tr>
+      <td>**Ed25519**</td>
+      <td>Node signatures, basic authentication</td>
+      <td>`rs/crypto/internal/crypto_lib/basic_sig/ed25519/`</td>
+    </tr>
+    <tr>
+      <td>**ECDSA**</td>
+      <td>Threshold signing for Bitcoin, Ethereum</td>
+      <td>`rs/crypto/internal/crypto_lib/threshold_sig/canister_threshold_sig/`</td>
+    </tr>
+    <tr>
+      <td>**Schnorr**</td>
+      <td>Bitcoin Taproot, alternative signatures</td>
+      <td>`rs/crypto/internal/crypto_lib/threshold_sig/canister_threshold_sig/`</td>
+    </tr>
+  </tbody>
+</table>
+
+## TLS and Transport Security
+
+### Node-to-Node Communication
+
+All replica communication is secured with TLS:
+
+```rust
+// rs/crypto/tls_interfaces/
+// - TLS handshake interfaces
+// - Certificate validation
+// - Secure channel establishment
+
+// Features:
+// - Mutual authentication
+// - Forward secrecy
+// - Certificate-based node identity
+```
+
+### Registry Integration
+
+Crypto keys are stored in the Registry:
+
+- Node public keys
+- Subnet threshold keys  
+- DKG transcripts
+- Certificate chains
+
+```rust
+// Registry provides:
+// - Key distribution
+// - Version history
+// - Access to all nodes
+```
+
+## Cryptographic Tests
+
+The crypto component includes extensive testing:
+
+<AccordionGroup>
+  <Accordion title="Unit Tests">
+    Located throughout `rs/crypto/` for individual components:
+    ```rust
+    // Tests/: Various protocol tests
+    // - Integration tests
+    // - Protocol correctness
+    // - Error handling
+    ```
+  </Accordion>
+  
+  <Accordion title="Benchmarks">
+    Performance testing in `benches/`:
+    ```rust
+    // rs/crypto/benches/
+    // - Signing performance
+    // - Verification speed
+    // - Key generation time
+    ```
+  </Accordion>
+  
+  <Accordion title="Stability Tests">
+    Ensure consistent behavior:
+    ```rust
+    // rs/crypto/internal/crypto_lib/threshold_sig/
+    //     bls12_381/tests/stability.rs
+    // - Serialization stability
+    // - Cross-version compatibility
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Usage Examples
+
+### Threshold Signing (Canister)
+
+```rust
+// Canister requests ECDSA signature
+let args = SignWithECDSAArgs {
+    message_hash: hash,
+    derivation_path: vec![canister_id.as_bytes()],
+    key_id: EcdsaKeyId {
+        curve: EcdsaCurve::Secp256k1,
+        name: "key_1".to_string(),
+    },
+};
+
+// Call management canister
+let (signature,): (ECDSAPublicKeyResponse,) = 
+    call(Principal::management_canister(), "sign_with_ecdsa", (args,))
+    .await?;
+```
+
+### Verification (Client)
+
+```rust
+use ic_crypto_tree_hash::*;
+
+// Verify certified query response
+let certificate = Certificate::from_cbor(cert_bytes)?;
+let witness = Witness::from_cbor(witness_bytes)?;
+
+// Verify against subnet public key
+verifier.verify_certified_data(
+    &subnet_id,
+    &certificate,
+    &witness,
+    &data_hash,
+)?;
+```
+
+## Security Considerations
+
+<CardGroup cols={2}>
+  <Card title="Key Protection" icon="key">
+    - Secret keys stored in encrypted format
+    - Access controlled by crypto component
+    - Never exported from SecretKeyStore
+    - Rotation procedures for compromised keys
+  </Card>
+  
+  <Card title="Threshold Security" icon="users-line">
+    - Requires threshold of nodes to sign
+    - Individual node compromise doesn't leak key
+    - Byzantine fault tolerance (n ≥ 3f+1)
+    - Proactive resharing for forward security
+  </Card>
+  
+  <Card title="Side-Channel Resistance" icon="shield">
+    - Constant-time implementations
+    - Memory protection mechanisms
+    - Sandboxed execution
+    - Regular security audits
+  </Card>
+  
+  <Card title="Protocol Security" icon="lock">
+    - Formal security proofs
+    - Zero-knowledge proofs for correctness
+    - Complaint mechanisms
+    - Verifiable randomness
+  </Card>
+</CardGroup>
+
+<Warning>
+Never use crypto internal libraries directly. Always go through the public crypto component interface.
+</Warning>
+
+## Source Code Reference
+
+<CodeGroup>
+```rust Main Component
+// rs/crypto/src/
+// Main crypto component used by replicas
+```
+
+```rust Threshold Signatures
+// rs/crypto/internal/crypto_lib/threshold_sig/
+// - bls12_381/: BLS threshold signatures
+// - canister_threshold_sig/: ECDSA/Schnorr for canisters
+```
+
+```rust Public Crates
+// rs/crypto/sha/: Hashing algorithms
+// rs/crypto/tree_hash/: Hash trees and witnesses
+// rs/crypto/node_key_validation/: Node key validation
+// rs/crypto/utils/: Signature utilities
+```
+</CodeGroup>
+
+**From rs/crypto/README.adoc:**
+```
+rs/crypto/
+├── src/           - Main Crypto Component with SecretKeyStore
+├── internal/      - Implementation (not for direct external use)
+├── sha/           - ic-crypto-sha (Wasm-compatible)
+├── tree_hash/     - ic-crypto-tree-hash (Wasm-compatible)  
+├── node_key_validation/ - ic-crypto-node-key-validation (Wasm)
+└── utils/         - Signature utilities (Wasm-compatible)
+```
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Consensus" href="/architecture/consensus">
+    How cryptography enables IC consensus
+  </Card>
+  <Card title="State Management" href="/core/state-management">
+    State certification using threshold signatures
+  </Card>
+  <Card title="Canisters" href="/core/canisters">
+    Using chain-key signatures in canisters
+  </Card>
+  <Card title="Network Nervous System" href="/core/nns">
+    Governance and the Registry's key management
+  </Card>
+</CardGroup>

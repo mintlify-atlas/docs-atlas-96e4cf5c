@@ -1,0 +1,723 @@
+---
+title: "ICP Ledger Canister"
+description: "API reference for the Internet Computer Protocol (ICP) ledger canister implementing ICRC-1 and ICRC-2 token standards"
+---
+
+# ICP Ledger Canister
+
+The ICP Ledger canister is the core token ledger for the Internet Computer Protocol. It implements the ICRC-1 and ICRC-2 token standards and manages all ICP token transfers and balances.
+
+## Overview
+
+The ICP Ledger provides:
+
+- **Token Transfers**: Send ICP tokens between accounts
+- **Balance Queries**: Check account balances
+- **Transaction History**: Query historical blocks and transactions
+- **ICRC-1 Standard**: Full implementation of the ICRC-1 fungible token standard
+- **ICRC-2 Standard**: Approve/transfer_from pattern for delegation
+- **Archive Canisters**: Automatic archival of historical blocks for scalability
+
+## Account Model
+
+The ICP Ledger supports two account identifier formats:
+
+### Legacy AccountIdentifier
+
+A 32-byte blob that is the SHA-224 hash of:
+- Domain separator ("\x0Aaccount-id")
+- Principal
+- Subaccount (32 bytes, defaults to zeros)
+
+### ICRC-1 Account
+
+A record with:
+- `owner`: Principal that owns the account
+- `subaccount`: Optional 32-byte blob (defaults to zeros)
+
+The ICRC-1 format is recommended for new applications.
+
+## Token Units
+
+ICP uses **e8s** (10^-8 ICP) as its base unit:
+- 1 ICP = 100,000,000 e8s
+- Transfer fee: 10,000 e8s (0.0001 ICP)
+
+## Core Methods
+
+### ICRC-1 Standard Methods
+
+#### icrc1_transfer
+
+Transfer ICP tokens to another account.
+
+<ParamField path="from_subaccount" type="blob">
+  Source subaccount (defaults to all zeros)
+</ParamField>
+
+<ParamField path="to" type="Account" required>
+  Destination account with owner and optional subaccount
+</ParamField>
+
+<ParamField path="amount" type="nat" required>
+  Amount to transfer in e8s
+</ParamField>
+
+<ParamField path="fee" type="nat">
+  Transaction fee in e8s (defaults to standard fee of 10,000 e8s)
+</ParamField>
+
+<ParamField path="memo" type="blob">
+  Optional memo (max 32 bytes)
+</ParamField>
+
+<ParamField path="created_at_time" type="nat64">
+  Transaction creation timestamp in nanoseconds (for deduplication)
+</ParamField>
+
+<ResponseField name="result" type="variant">
+  Transfer result:
+  - `Ok`: Block index of the transaction
+  - `Err`: Transfer error with details
+</ResponseField>
+
+**Possible Errors:**
+
+- `BadFee`: Incorrect fee amount provided
+- `InsufficientFunds`: Source account has insufficient balance
+- `TooOld`: Transaction is older than 24 hours
+- `CreatedInFuture`: Transaction timestamp is in the future
+- `Duplicate`: Transaction with same memo and timestamp already exists
+- `TemporarilyUnavailable`: Ledger is temporarily unavailable
+- `GenericError`: Other error with description
+
+#### icrc1_balance_of
+
+Query the balance of an account.
+
+<ParamField path="account" type="Account" required>
+  Account to query with owner and optional subaccount
+</ParamField>
+
+<ResponseField name="balance" type="nat">
+  Account balance in e8s
+</ResponseField>
+
+#### icrc1_metadata
+
+Get ledger metadata.
+
+<ResponseField name="metadata" type="vec record { text; Value }">
+  List of metadata key-value pairs including:
+  - `icrc1:name`: Token name ("Internet Computer")
+  - `icrc1:symbol`: Token symbol ("ICP")
+  - `icrc1:decimals`: Decimal places (8)
+  - `icrc1:fee`: Transfer fee
+</ResponseField>
+
+#### icrc1_supported_standards
+
+List supported token standards.
+
+<ResponseField name="standards" type="vec record { name: text; url: text }">
+  List of supported standards:
+  - ICRC-1: Fungible token standard
+  - ICRC-2: Approve and transfer from
+  - ICRC-10: Supported standards query
+  - ICRC-21: Canister call consent messages
+</ResponseField>
+
+#### icrc1_name
+
+Get the token name.
+
+<ResponseField name="name" type="text">
+  Token name: "Internet Computer"
+</ResponseField>
+
+#### icrc1_symbol
+
+Get the token symbol.
+
+<ResponseField name="symbol" type="text">
+  Token symbol: "ICP"
+</ResponseField>
+
+#### icrc1_decimals
+
+Get the number of decimal places.
+
+<ResponseField name="decimals" type="nat8">
+  Decimal places: 8
+</ResponseField>
+
+#### icrc1_fee
+
+Get the transfer fee.
+
+<ResponseField name="fee" type="nat">
+  Transfer fee in e8s: 10,000
+</ResponseField>
+
+#### icrc1_total_supply
+
+Get the total token supply.
+
+<ResponseField name="total_supply" type="nat">
+  Total ICP supply in e8s
+</ResponseField>
+
+#### icrc1_minting_account
+
+Get the minting account.
+
+<ResponseField name="minting_account" type="Account">
+  The account that can mint new tokens (governance minting account)
+</ResponseField>
+
+### ICRC-2 Standard Methods
+
+#### icrc2_approve
+
+Approve a spender to transfer tokens on your behalf.
+
+<ParamField path="from_subaccount" type="blob">
+  Source subaccount (defaults to all zeros)
+</ParamField>
+
+<ParamField path="spender" type="Account" required>
+  Account to approve as spender
+</ParamField>
+
+<ParamField path="amount" type="nat" required>
+  Amount to approve in e8s
+</ParamField>
+
+<ParamField path="expected_allowance" type="nat">
+  Current allowance (for safety, prevents race conditions)
+</ParamField>
+
+<ParamField path="expires_at" type="nat64">
+  Expiration timestamp in nanoseconds
+</ParamField>
+
+<ParamField path="fee" type="nat">
+  Transaction fee (defaults to 10,000 e8s)
+</ParamField>
+
+<ParamField path="memo" type="blob">
+  Optional memo
+</ParamField>
+
+<ParamField path="created_at_time" type="nat64">
+  Transaction creation timestamp
+</ParamField>
+
+<ResponseField name="result" type="variant">
+  Approve result:
+  - `Ok`: Block index of the approval
+  - `Err`: Approval error
+</ResponseField>
+
+**Possible Errors:**
+
+- `BadFee`: Incorrect fee
+- `InsufficientFunds`: Insufficient balance to pay fee
+- `AllowanceChanged`: Current allowance doesn't match expected_allowance
+- `Expired`: Expiration time is in the past
+- `TooOld`: Transaction too old
+- `CreatedInFuture`: Transaction timestamp in future
+- `Duplicate`: Duplicate transaction
+- `TemporarilyUnavailable`: Service temporarily unavailable
+- `GenericError`: Other error
+
+#### icrc2_transfer_from
+
+Transfer tokens from an approved account.
+
+<ParamField path="spender_subaccount" type="blob">
+  Spender's subaccount (defaults to all zeros)
+</ParamField>
+
+<ParamField path="from" type="Account" required>
+  Account to transfer from (must have approval)
+</ParamField>
+
+<ParamField path="to" type="Account" required>
+  Destination account
+</ParamField>
+
+<ParamField path="amount" type="nat" required>
+  Amount to transfer in e8s
+</ParamField>
+
+<ParamField path="fee" type="nat">
+  Transaction fee
+</ParamField>
+
+<ParamField path="memo" type="blob">
+  Optional memo
+</ParamField>
+
+<ParamField path="created_at_time" type="nat64">
+  Transaction creation timestamp
+</ParamField>
+
+<ResponseField name="result" type="variant">
+  Transfer result:
+  - `Ok`: Block index
+  - `Err`: Transfer error
+</ResponseField>
+
+**Possible Errors:**
+
+- `InsufficientAllowance`: Not enough allowance for transfer + fee
+- `BadFee`: Incorrect fee
+- `InsufficientFunds`: Source account has insufficient balance
+- `TooOld`: Transaction too old
+- `CreatedInFuture`: Transaction in future
+- `Duplicate`: Duplicate transaction
+- `TemporarilyUnavailable`: Service unavailable
+- `GenericError`: Other error
+
+#### icrc2_allowance
+
+Query the allowance between accounts.
+
+<ParamField path="account" type="Account" required>
+  Account that granted the allowance
+</ParamField>
+
+<ParamField path="spender" type="Account" required>
+  Spender account
+</ParamField>
+
+<ResponseField name="allowance" type="nat">
+  Current allowance amount in e8s
+</ResponseField>
+
+<ResponseField name="expires_at" type="nat64">
+  Expiration timestamp (if set)
+</ResponseField>
+
+### Legacy Methods
+
+#### transfer
+
+Legacy transfer method using AccountIdentifier format.
+
+<ParamField path="memo" type="nat64" required>
+  Transaction memo (64-bit number)
+</ParamField>
+
+<ParamField path="amount" type="Tokens" required>
+  Amount to transfer with e8s field
+</ParamField>
+
+<ParamField path="fee" type="Tokens" required>
+  Transaction fee (must be 10,000 e8s)
+</ParamField>
+
+<ParamField path="from_subaccount" type="blob">
+  Source subaccount
+</ParamField>
+
+<ParamField path="to" type="AccountIdentifier" required>
+  Destination account identifier (32-byte blob)
+</ParamField>
+
+<ParamField path="created_at_time" type="TimeStamp">
+  Transaction timestamp with timestamp_nanos field
+</ParamField>
+
+<ResponseField name="result" type="TransferResult">
+  Transfer result:
+  - `Ok`: Block index
+  - `Err`: Transfer error
+</ResponseField>
+
+#### account_balance
+
+Query account balance using AccountIdentifier.
+
+<ParamField path="account" type="AccountIdentifier" required>
+  Account identifier (32-byte blob)
+</ParamField>
+
+<ResponseField name="balance" type="Tokens">
+  Account balance with e8s field
+</ResponseField>
+
+#### account_identifier
+
+Convert an ICRC-1 Account to AccountIdentifier format.
+
+<ParamField path="account" type="Account" required>
+  ICRC-1 account to convert
+</ParamField>
+
+<ResponseField name="account_identifier" type="AccountIdentifier">
+  32-byte AccountIdentifier blob
+</ResponseField>
+
+### Query Methods
+
+#### query_blocks
+
+Query a range of blocks from the ledger.
+
+<ParamField path="start" type="nat64" required>
+  Starting block index
+</ParamField>
+
+<ParamField path="length" type="nat64" required>
+  Number of blocks to fetch
+</ParamField>
+
+<ResponseField name="chain_length" type="nat64">
+  Total number of blocks in the ledger
+</ResponseField>
+
+<ResponseField name="blocks" type="vec Block">
+  List of blocks in the specified range
+</ResponseField>
+
+<ResponseField name="first_block_index" type="nat64">
+  Index of the first block in the response
+</ResponseField>
+
+<ResponseField name="archived_blocks" type="vec ArchivedBlocksRange">
+  References to archive canisters for older blocks
+</ResponseField>
+
+<ResponseField name="certificate" type="blob">
+  Certificate for the response (in non-replicated queries)
+</ResponseField>
+
+#### archives
+
+Get list of archive canisters.
+
+<ResponseField name="archives" type="vec Archive">
+  List of archive canister IDs storing historical blocks
+</ResponseField>
+
+#### tip_of_chain
+
+Get the latest block index.
+
+<ResponseField name="tip_index" type="nat64">
+  Index of the most recent block
+</ResponseField>
+
+<ResponseField name="certification" type="blob">
+  Certificate for the tip
+</ResponseField>
+
+#### transfer_fee
+
+Get the current transfer fee.
+
+<ResponseField name="transfer_fee" type="Tokens">
+  Current transfer fee (10,000 e8s)
+</ResponseField>
+
+## Archive Canisters
+
+As the ledger grows, old blocks are moved to archive canisters to keep the main ledger efficient.
+
+### Archive Query Methods
+
+#### get_blocks
+
+Query blocks from an archive canister.
+
+<ParamField path="start" type="nat64" required>
+  Starting block index
+</ParamField>
+
+<ParamField path="length" type="nat64" required>
+  Number of blocks to fetch
+</ParamField>
+
+<ResponseField name="result" type="GetBlocksResult">
+  - `Ok`: BlockRange with blocks
+  - `Err`: Error if start index is invalid
+</ResponseField>
+
+#### get_encoded_blocks
+
+Query encoded blocks (more efficient for large queries).
+
+<ParamField path="start" type="nat64" required>
+  Starting block index
+</ParamField>
+
+<ParamField path="length" type="nat64" required>
+  Number of blocks to fetch
+</ParamField>
+
+<ResponseField name="result" type="GetEncodedBlocksResult">
+  - `Ok`: Vec of encoded block blobs
+  - `Err`: Error details
+</ResponseField>
+
+## Data Types
+
+### Block
+
+Represents a transaction block in the ledger.
+
+<ResponseField name="parent_hash" type="blob">
+  Hash of the parent block
+</ResponseField>
+
+<ResponseField name="transaction" type="Transaction">
+  The transaction in this block
+</ResponseField>
+
+<ResponseField name="timestamp" type="TimeStamp">
+  Block creation timestamp in nanoseconds
+</ResponseField>
+
+### Transaction
+
+<ResponseField name="memo" type="nat64">
+  Legacy memo (64-bit number)
+</ResponseField>
+
+<ResponseField name="icrc1_memo" type="blob">
+  ICRC-1 memo (up to 32 bytes)
+</ResponseField>
+
+<ResponseField name="operation" type="Operation">
+  The operation performed:
+  - `Transfer`: Transfer between accounts
+  - `Mint`: Mint new tokens
+  - `Burn`: Burn tokens
+  - `Approve`: Set allowance for spender
+</ResponseField>
+
+<ResponseField name="created_at_time" type="TimeStamp">
+  Transaction creation timestamp
+</ResponseField>
+
+### Operation
+
+**Transfer**
+<ResponseField name="from" type="AccountIdentifier">
+  Source account
+</ResponseField>
+<ResponseField name="to" type="AccountIdentifier">
+  Destination account
+</ResponseField>
+<ResponseField name="amount" type="Tokens">
+  Transfer amount
+</ResponseField>
+<ResponseField name="fee" type="Tokens">
+  Transaction fee paid
+</ResponseField>
+<ResponseField name="spender" type="AccountIdentifier">
+  Spender if using transfer_from
+</ResponseField>
+
+**Mint**
+<ResponseField name="to" type="AccountIdentifier">
+  Recipient account
+</ResponseField>
+<ResponseField name="amount" type="Tokens">
+  Minted amount
+</ResponseField>
+
+**Burn**
+<ResponseField name="from" type="AccountIdentifier">
+  Source account
+</ResponseField>
+<ResponseField name="amount" type="Tokens">
+  Burned amount
+</ResponseField>
+<ResponseField name="spender" type="AccountIdentifier">
+  Spender if using burn_from
+</ResponseField>
+
+**Approve**
+<ResponseField name="from" type="AccountIdentifier">
+  Account granting approval
+</ResponseField>
+<ResponseField name="spender" type="AccountIdentifier">
+  Account receiving approval
+</ResponseField>
+<ResponseField name="allowance" type="Tokens">
+  Approved amount
+</ResponseField>
+<ResponseField name="fee" type="Tokens">
+  Approval fee
+</ResponseField>
+<ResponseField name="expires_at" type="TimeStamp">
+  Expiration time
+</ResponseField>
+<ResponseField name="expected_allowance" type="Tokens">
+  Expected current allowance
+</ResponseField>
+
+## Transaction Deduplication
+
+The ledger implements deduplication to prevent double-spending:
+
+1. Each transaction can include a `created_at_time` timestamp
+2. Transactions are deduplicated based on `(sender, memo, created_at_time)`
+3. Deduplication window is 24 hours
+4. If a duplicate is detected, the original block index is returned
+
+## Best Practices
+
+### For Developers
+
+1. **Use ICRC-1 Format**: Prefer ICRC-1 Account format over legacy AccountIdentifier
+2. **Set Timestamps**: Always set `created_at_time` for deduplication
+3. **Handle Errors**: Properly handle all error variants
+4. **Use Query Methods**: Use query methods for read operations (faster, cheaper)
+5. **Archive Access**: Check `archived_blocks` when querying old transactions
+6. **Fee Checking**: Always check current fee with `icrc1_fee()` before transfers
+
+### For Users
+
+1. **Transaction IDs**: Save block indices for transaction tracking
+2. **Subaccounts**: Use subaccounts to manage multiple addresses under one principal
+3. **Memo Usage**: Use memos to track payment purposes
+4. **Approval Limits**: Set reasonable allowance limits and expiration times
+
+## Examples
+
+### Transfer ICP (ICRC-1)
+
+```javascript
+const result = await ledger.icrc1_transfer({
+  from_subaccount: [],
+  to: {
+    owner: recipientPrincipal,
+    subaccount: []
+  },
+  amount: 100_000_000n, // 1 ICP
+  fee: [],
+  memo: [],
+  created_at_time: [BigInt(Date.now()) * 1_000_000n]
+});
+
+if ('Ok' in result) {
+  console.log('Transfer successful, block:', result.Ok);
+} else {
+  console.error('Transfer failed:', result.Err);
+}
+```
+
+### Check Balance
+
+```javascript
+const balance = await ledger.icrc1_balance_of({
+  owner: myPrincipal,
+  subaccount: []
+});
+
+console.log('Balance:', balance, 'e8s');
+console.log('Balance:', Number(balance) / 100_000_000, 'ICP');
+```
+
+### Approve and Transfer From
+
+```javascript
+// Step 1: Approve spender
+const approveResult = await ledger.icrc2_approve({
+  from_subaccount: [],
+  spender: {
+    owner: spenderPrincipal,
+    subaccount: []
+  },
+  amount: 100_000_000n, // 1 ICP
+  fee: [],
+  memo: [],
+  created_at_time: [BigInt(Date.now()) * 1_000_000n],
+  expected_allowance: [],
+  expires_at: []
+});
+
+// Step 2: Spender transfers from approved account
+const transferResult = await ledger.icrc2_transfer_from({
+  spender_subaccount: [],
+  from: {
+    owner: approverPrincipal,
+    subaccount: []
+  },
+  to: {
+    owner: recipientPrincipal,
+    subaccount: []
+  },
+  amount: 50_000_000n, // 0.5 ICP
+  fee: [],
+  memo: [],
+  created_at_time: [BigInt(Date.now()) * 1_000_000n]
+});
+```
+
+### Query Transaction History
+
+```javascript
+const response = await ledger.query_blocks({
+  start: 0n,
+  length: 100n
+});
+
+console.log('Total blocks:', response.chain_length);
+console.log('Returned blocks:', response.blocks.length);
+
+// Check archived blocks
+for (const archived of response.archived_blocks) {
+  console.log('Archive canister:', archived.callback.principal);
+  console.log('Block range:', archived.start, 'to', archived.start + archived.length);
+}
+```
+
+## Common Patterns
+
+### Subaccount Generation
+
+Generate deterministic subaccounts:
+
+```javascript
+import { sha256 } from '@noble/hashes/sha256';
+
+function generateSubaccount(seed: string): Uint8Array {
+  const hash = sha256(new TextEncoder().encode(seed));
+  return new Uint8Array([...hash, ...new Array(8).fill(0)].slice(0, 32));
+}
+
+const subaccount = generateSubaccount('user-123');
+```
+
+### Polling for Confirmation
+
+```javascript
+async function waitForBlock(blockIndex: bigint): Promise<Block> {
+  for (let i = 0; i < 30; i++) {
+    const response = await ledger.query_blocks({
+      start: blockIndex,
+      length: 1n
+    });
+    
+    if (response.blocks.length > 0) {
+      return response.blocks[0];
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  
+  throw new Error('Block not found after 30 seconds');
+}
+```
+
+## See Also
+
+- [NNS Governance API](/api/canisters/governance)
+- [SNS Canisters API](/api/canisters/sns)
+- [ICRC-1 Standard](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-1)
+- [ICRC-2 Standard](https://github.com/dfinity/ICRC-1/tree/main/standards/ICRC-2)

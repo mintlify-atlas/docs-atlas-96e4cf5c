@@ -1,0 +1,380 @@
+---
+title: Building the IC
+description: How to build the Internet Computer Protocol binaries, canisters, and IC-OS images
+---
+
+This guide covers building the Internet Computer Protocol from source using the Bazel build system.
+
+## Prerequisites
+
+Before building, ensure you have:
+
+- Met all [system requirements](/getting-started/system-requirements)
+- Cloned the IC repository
+- A clean Git working directory (no uncommitted changes)
+
+<Warning>
+  The build script will fail if your Git working directory is not clean. Commit or stash your changes before building.
+</Warning>
+
+## Quick Start
+
+The simplest way to build the IC is using the containerized build script:
+
+```bash
+# Build all IC-OS images
+./ci/container/build-ic.sh -i
+
+# Build binaries and canisters
+./ci/container/build-ic.sh -b -c
+```
+
+Built artifacts are located in the `artifacts/` directory at the repository root.
+
+## Build Script Options
+
+The `build-ic.sh` script provides several options for building different components:
+
+### Command-Line Flags
+
+<ParamField path="-b, --binaries" type="flag">
+  Build IC binaries
+</ParamField>
+
+<ParamField path="-c, --canisters" type="flag">
+  Build IC canisters
+</ParamField>
+
+<ParamField path="-i, --icos" type="flag">
+  Build IC-OS images (GuestOS, HostOS, SetupOS, Recovery)
+</ParamField>
+
+<ParamField path="-n, --no-release" type="flag">
+  Non-release build (for non-protected branches not in rc--* or master)
+</ParamField>
+
+<ParamField path="-h, --help" type="flag">
+  Display help information
+</ParamField>
+
+### Usage Examples
+
+<CodeGroup>
+```bash Binaries Only
+./ci/container/build-ic.sh -b
+```
+
+```bash Canisters Only
+./ci/container/build-ic.sh -c
+```
+
+```bash IC-OS Images Only
+./ci/container/build-ic.sh -i
+```
+
+```bash Everything
+./ci/container/build-ic.sh -b -c -i
+```
+
+```bash Development Build
+./ci/container/build-ic.sh -b -c -n
+```
+</CodeGroup>
+
+## Build Targets
+
+The build script uses Bazel targets to build different components:
+
+### Binaries
+
+```bash
+bazel build //publish/binaries:bundle
+```
+
+Output location: `artifacts/release/`
+
+### Canisters
+
+```bash
+bazel build //publish/canisters:bundle
+```
+
+Output location: `artifacts/canisters/`
+
+### IC-OS Images
+
+```bash
+bazel build \
+  //ic-os/guestos/envs/prod:bundle-update \
+  //ic-os/hostos/envs/prod:bundle-update \
+  //ic-os/setupos/envs/prod:bundle \
+  //ic-os/guestos/envs/recovery:bundle-update
+```
+
+Output location: `artifacts/icos/`
+
+## Bazel Build Process
+
+### Build Configuration
+
+The build script uses common Bazel arguments:
+
+```bash
+bazel build \
+  --config=local \
+  --color=yes \
+  [--config=stamped]  # For release builds
+```
+
+<Tabs>
+  <Tab title="Release Build">
+    Release builds (on `master` or `rc--*` branches) use the `--config=stamped` flag:
+    
+    ```bash
+    bazel build --config=local --config=stamped <targets>
+    ```
+    
+    This includes version information in the built artifacts.
+  </Tab>
+  
+  <Tab title="Development Build">
+    Development builds use only the base configuration:
+    
+    ```bash
+    bazel build --config=local <targets>
+    ```
+    
+    Use the `--no-release` flag for non-protected branches.
+  </Tab>
+</Tabs>
+
+### Build Artifacts
+
+After building, artifacts are organized by type:
+
+```
+artifacts/
+├── release/          # Binaries
+│   ├── canister_sandbox
+│   ├── ic-admin
+│   ├── orchestrator
+│   ├── replica
+│   └── SHA256SUMS
+├── canisters/        # Canisters
+│   ├── governance-canister.wasm
+│   ├── ledger-canister.wasm
+│   └── SHA256SUMS
+└── icos/            # IC-OS images
+    ├── guestos/
+    │   ├── update/
+    │   │   ├── update-img.tar.zst
+    │   │   └── SHA256SUMS
+    │   └── update-img-recovery/
+    ├── hostos/
+    │   └── update/
+    ├── setupos/
+```
+
+Each directory includes a `SHA256SUMS` file with checksums for verification.
+
+## Building Specific Components
+
+### Building Individual IC-OS Images
+
+You can build specific IC-OS images directly with Bazel:
+
+<Accordion title="GuestOS">
+  ```bash
+  # Production GuestOS
+  bazel build //ic-os/guestos/envs/prod/...
+  
+  # Development GuestOS (with console access)
+  bazel build //ic-os/guestos/envs/dev/...
+  
+  # Recovery GuestOS
+  bazel build //ic-os/guestos/envs/recovery/...
+  ```
+  
+  Output: `bazel-bin/ic-os/guestos/envs/<env>/`
+</Accordion>
+
+<Accordion title="HostOS">
+  ```bash
+  # Production HostOS
+  bazel build //ic-os/hostos/envs/prod/...
+  
+  # Development HostOS
+  bazel build //ic-os/hostos/envs/dev/...
+  ```
+  
+  Output: `bazel-bin/ic-os/hostos/envs/<env>/`
+</Accordion>
+
+<Accordion title="SetupOS">
+  ```bash
+  # Production SetupOS
+  bazel build //ic-os/setupos/envs/prod/...
+  
+  # Development SetupOS
+  bazel build //ic-os/setupos/envs/dev/...
+  ```
+  
+  Output: `bazel-bin/ic-os/setupos/envs/<env>/`
+</Accordion>
+
+<Note>
+  Development images (`dev` targets) allow console access with username/password: `root`/`root`
+  
+  Production images (`prod` targets) have console access disabled for security.
+</Note>
+
+## Containerized Build
+
+The containerized build automatically handles the environment setup:
+
+```bash
+./ci/container/build-ic.sh -i
+```
+
+This script:
+
+1. Checks if running inside the `ic-build` container
+2. If not, drops into the container using `container-run.sh`
+3. Runs the build inside the container
+4. Copies artifacts to the host's `artifacts/` directory
+
+<Info>
+  The container is defined in `ci/container/Dockerfile` and includes all necessary dependencies.
+</Info>
+
+## Manual Build (Without Container)
+
+If you have all dependencies installed locally:
+
+```bash
+# Set up environment
+export VERSION="$(git rev-parse HEAD)"
+
+# Build binaries
+bazel build --config=local --config=stamped //publish/binaries:bundle
+
+# Build canisters  
+bazel build --config=local --config=stamped //publish/canisters:bundle
+
+# Build IC-OS images
+bazel build --config=local --config=stamped \
+  //ic-os/guestos/envs/prod:bundle-update \
+  //ic-os/hostos/envs/prod:bundle-update \
+  //ic-os/setupos/envs/prod:bundle \
+  //ic-os/guestos/envs/recovery:bundle-update
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Git working directory is not clean">
+    The build requires a clean Git state.
+    
+    ```bash
+    # Check status
+    git status
+    
+    # Commit or stash changes
+    git stash
+    # or
+    git commit -am "WIP"
+    ```
+  </Accordion>
+  
+  <Accordion title="Error: Build script nested, aborting">
+    This indicates the container detection failed. Try cleaning up and rebuilding:
+    
+    ```bash
+    unset BUILD_IC_NESTED
+    ./ci/container/build-ic.sh -i
+    ```
+  </Accordion>
+  
+  <Accordion title="Out of disk space">
+    Bazel builds can consume significant disk space. Ensure you have at least 100 GB free.
+    
+    ```bash
+    # Clean Bazel cache
+    bazel clean --expunge
+    
+    # Check disk space
+    df -h .
+    ```
+  </Accordion>
+  
+  <Accordion title="Podman not found">
+    Install Podman for containerized builds:
+    
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y podman
+    ```
+  </Accordion>
+  
+  <Accordion title="Bazel version mismatch">
+    Ensure you're using the correct Bazel version:
+    
+    ```bash
+    # Check required version
+    cat .bazelversion
+    
+    # Install specific version
+    # Follow instructions at https://bazel.build/install
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Build Performance Tips
+
+<CardGroup cols={2}>
+  <Card title="Use Local Cache" icon="database">
+    Bazel caches build outputs. Subsequent builds are much faster.
+  </Card>
+  
+  <Card title="Parallel Builds" icon="bolt">
+    Bazel automatically parallelizes builds based on available CPU cores.
+  </Card>
+  
+  <Card title="Build Specific Targets" icon="bullseye">
+    Only build what you need to save time and disk space.
+  </Card>
+  
+  <Card title="More RAM" icon="memory">
+    More RAM improves build performance, especially for linking.
+  </Card>
+</CardGroup>
+
+## Verifying Build Outputs
+
+After building, verify the checksums:
+
+```bash
+# Verify binaries
+cd artifacts/release
+sha256sum -c SHA256SUMS
+
+# Verify canisters
+cd artifacts/canisters  
+sha256sum -c SHA256SUMS
+
+# Verify IC-OS images
+cd artifacts/icos/guestos/update
+sha256sum -c SHA256SUMS
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Verifying Releases" icon="shield-check" href="/getting-started/verifying-releases">
+    Learn how to verify build reproducibility
+  </Card>
+  
+  <Card title="IC-OS Overview" icon="os" href="/ic-os/overview">
+    Deep dive into IC-OS architecture
+  </Card>
+</CardGroup>

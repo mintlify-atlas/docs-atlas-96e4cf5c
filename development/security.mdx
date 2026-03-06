@@ -1,0 +1,351 @@
+---
+title: Security
+description: Security policy and vulnerability reporting for the Internet Computer Protocol
+---
+
+DFINITY takes the security of our software products seriously, including all source code repositories under the [DFINITY](https://github.com/dfinity) GitHub organization.
+
+## Bug Bounty Program
+
+<Info>
+  The **DFINITY Foundation** operates an [Internet Computer (ICP) Bug Bounty program](https://dfinity.org/bug-bounty/) that rewards researchers for finding and reporting vulnerabilities.
+</Info>
+
+### Eligibility
+
+Before reporting a vulnerability, please:
+
+1. Review the bug bounty policy at [dfinity.org/bug-bounty](https://dfinity.org/bug-bounty/)
+2. Check the **scope and eligibility criteria** to determine if your finding qualifies
+3. Understand the reward structure for different severity levels
+
+### Rewards
+
+The bug bounty program offers rewards based on:
+
+- **Severity** - Critical, High, Medium, or Low impact
+- **Exploitability** - Ease of exploitation
+- **Impact** - Potential damage to the network, users, or assets
+- **Quality** - Completeness and clarity of the report
+
+## Reporting a Vulnerability
+
+<Warning>
+  **Do not disclose vulnerabilities publicly.** Public disclosure could be exploited by attackers before a fix is available.
+</Warning>
+
+### Reporting Methods
+
+<Steps>
+  <Step title="Preferred: HackenProof (Recommended)">
+    Report through [HackenProof](https://hackenproof.com/programs/internet-computer-protocol)
+    
+    **Advantages:**
+    - Streamlined disclosure process
+    - Faster Bug Bounty payouts
+    - Structured communication channel
+  </Step>
+  
+  <Step title="Alternative: Email">
+    Send an email to: **securitybugs@dfinity.org**
+    
+    Include the following information:
+    - Description of the vulnerability
+    - Steps to reproduce the vulnerability
+    - Risk rating (Critical/High/Medium/Low)
+    - Proof of concept (if applicable)
+    - Any other relevant information
+  </Step>
+</Steps>
+
+### What to Include in Your Report
+
+<AccordionGroup>
+  <Accordion title="Vulnerability Description">
+    - Clear, concise summary of the vulnerability
+    - Affected components or systems
+    - Vulnerability type (e.g., buffer overflow, injection, cryptographic weakness)
+  </Accordion>
+  
+  <Accordion title="Reproduction Steps">
+    - Detailed steps to reproduce the issue
+    - Required preconditions or setup
+    - Expected vs. actual behavior
+    - Screenshots or logs if applicable
+  </Accordion>
+  
+  <Accordion title="Impact Assessment">
+    - Potential consequences if exploited
+    - Affected user groups or systems
+    - Your assessment of severity
+  </Accordion>
+  
+  <Accordion title="Supporting Materials">
+    - Proof of concept code (if safe to share)
+    - Network captures or logs
+    - Links to related vulnerabilities or research
+  </Accordion>
+</AccordionGroup>
+
+### Response Timeline
+
+<Info>
+  We will respond to your report **within 72 hours** and work with you to fix the vulnerability as soon as possible.
+</Info>
+
+## Security Update Process
+
+Once a security vulnerability is reported, the DFINITY Foundation follows a structured process:
+
+<Steps>
+  <Step title="Investigation">
+    - Confirm the vulnerability
+    - Assess severity and impact
+    - Assign to appropriate security team
+  </Step>
+  
+  <Step title="Fix Development">
+    - Develop and test a fix
+    - Ensure no regression or new vulnerabilities
+    - Prepare documentation updates
+  </Step>
+  
+  <Step title="Release">
+    - Release a new version including the fix
+    - Follow Network Nervous System (NNS) upgrade process for protocol changes
+  </Step>
+  
+  <Step title="Announcement">
+    - Announce the security fix in release notes
+    - Provide guidance to node operators if needed
+    - Credit researchers (with permission)
+  </Step>
+</Steps>
+
+### Coordinated Disclosure
+
+We practice **responsible disclosure**:
+
+- Vulnerabilities are kept confidential until a fix is deployed
+- We coordinate with reporters on disclosure timing
+- Public disclosure occurs only after fixes are widely deployed
+
+## Security Best Practices
+
+### For Contributors
+
+<Warning>
+  Follow security best practices when contributing to the Internet Computer codebase.
+</Warning>
+
+#### Secure Coding Guidelines
+
+<CardGroup cols={2}>
+  <Card title="Input Validation" icon="check-double">
+    Always validate and sanitize external inputs
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation">
+    Handle errors gracefully without leaking sensitive information
+  </Card>
+  <Card title="Cryptography" icon="key">
+    Use established cryptographic libraries, never roll your own
+  </Card>
+  <Card title="Dependencies" icon="link">
+    Keep dependencies updated and audit for known vulnerabilities
+  </Card>
+</CardGroup>
+
+#### Code Review Focus Areas
+
+<Checklist>
+  - [ ] **Memory safety** - No buffer overflows, use-after-free, or memory leaks
+  - [ ] **Cryptographic operations** - Proper key management, secure randomness
+  - [ ] **Authentication/Authorization** - Correct access controls and permission checks
+  - [ ] **Data validation** - Input sanitization and bounds checking
+  - [ ] **Concurrency** - Race conditions, deadlocks, and thread safety
+  - [ ] **Resource management** - DoS prevention, rate limiting
+</Checklist>
+
+### For Node Operators
+
+#### Infrastructure Security
+
+<AccordionGroup>
+  <Accordion title="System Hardening">
+    - Keep IC-OS updated with latest security patches
+    - Minimize exposed network services
+    - Use firewall rules to restrict access
+    - Enable security monitoring and logging
+  </Accordion>
+  
+  <Accordion title="Key Management">
+    - Secure storage of cryptographic keys
+    - Use Hardware Security Modules (HSMs) where appropriate
+    - Implement key rotation procedures
+    - Maintain secure backups
+  </Accordion>
+  
+  <Accordion title="Access Control">
+    - Limit administrative access
+    - Use strong authentication mechanisms
+    - Implement principle of least privilege
+    - Audit access logs regularly
+  </Accordion>
+  
+  <Accordion title="Monitoring">
+    - Monitor for unusual network activity
+    - Set up alerting for security events
+    - Participate in security advisories
+    - Stay informed about IC security updates
+  </Accordion>
+</AccordionGroup>
+
+### For Canister Developers
+
+#### Smart Contract Security
+
+<Warning>
+  Canister developers should follow best practices to prevent vulnerabilities in their code.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Access Controls" icon="lock">
+    Implement proper authorization checks in all canister methods
+  </Card>
+  <Card title="Input Validation" icon="filter">
+    Validate all inputs, especially from untrusted callers
+  </Card>
+  <Card title="Cycles Management" icon="coins">
+    Protect against cycles draining attacks
+  </Card>
+  <Card title="State Management" icon="database">
+    Handle state transitions atomically and safely
+  </Card>
+</CardGroup>
+
+#### Testing for Security
+
+- **Fuzz testing** - Use property-based testing to find edge cases
+- **Security audits** - Consider third-party security audits for critical canisters
+- **Formal verification** - Use formal methods where applicable
+- **Penetration testing** - Test attack scenarios before deployment
+
+## Dependency Management
+
+### Vulnerability Scanning
+
+The repository uses `cargo-deny` for dependency auditing:
+
+```bash
+# Check for known vulnerabilities
+cargo deny check advisories
+
+# Check for license compliance
+cargo deny check licenses
+
+# Check for supply chain security
+cargo deny check bans
+```
+
+Configuration is maintained in `deny.toml` at the repository root.
+
+### Supply Chain Security
+
+<Steps>
+  <Step title="Trusted Sources">
+    Only use dependencies from reputable sources (crates.io, verified publishers)
+  </Step>
+  <Step title="Version Pinning">
+    Pin dependency versions in Cargo.lock for reproducibility
+  </Step>
+  <Step title="Regular Updates">
+    Keep dependencies updated to receive security patches
+  </Step>
+  <Step title="Audit Trail">
+    Review dependency changes in pull requests
+  </Step>
+</Steps>
+
+## Security Tooling
+
+### Static Analysis
+
+- **Clippy** - Rust linter with security-relevant checks
+- **Rustfmt** - Consistent code formatting reduces bugs
+- **Cargo-audit** - Check for known vulnerabilities in dependencies
+
+### Dynamic Analysis
+
+- **Fuzzing** - See `rs/fuzzers/` for fuzz testing infrastructure
+- **System tests** - End-to-end security testing
+- **Canister testing** - Use PocketIC for security test scenarios
+
+### Build Reproducibility
+
+The Internet Computer provides verification of build reproducibility:
+
+<CodeGroup>
+```bash Verify Release
+# Verify IC-OS update images by proposal number
+curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+    python3 - -p <proposal_number>
+
+# Verify by git commit
+curl -fsSL https://raw.githubusercontent.com/dfinity/ic/{COMMIT_ID}/ci/scripts/repro-check | \
+    python3 - -c {COMMIT_ID}
+```
+</CodeGroup>
+
+This ensures deployed code matches the published source.
+
+## Communication
+
+### Preferred Language
+
+<Info>
+  We prefer all security communications to be in **English** for consistency and clarity.
+</Info>
+
+### Confidentiality
+
+- Security reports are kept confidential
+- Access is limited to security team members
+- Reporter identity is protected (unless permission is given for attribution)
+
+### Security Advisories
+
+Security advisories are published:
+
+- Through NNS proposals for protocol upgrades
+- In release notes on GitHub
+- On the DFINITY Forum for community awareness
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Bug Bounty Program" icon="award" href="https://dfinity.org/bug-bounty/">
+    Official bug bounty program details
+  </Card>
+  <Card title="HackenProof Platform" icon="shield-halved" href="https://hackenproof.com/programs/internet-computer-protocol">
+    Report vulnerabilities through HackenProof
+  </Card>
+  <Card title="Contributing Guide" icon="code-pull-request" href="/development/contributing">
+    Guidelines for secure contributions
+  </Card>
+  <Card title="Testing Guide" icon="flask" href="/development/testing">
+    Security testing practices
+  </Card>
+</CardGroup>
+
+## Disclaimer
+
+<Warning>
+  This security policy is subject to change at any time. Check the [latest version](https://github.com/dfinity/ic/blob/master/SECURITY.md) for updates.
+</Warning>
+
+## Contact Information
+
+- **Security Email:** securitybugs@dfinity.org
+- **Bug Bounty:** [HackenProof](https://hackenproof.com/programs/internet-computer-protocol)
+- **Forum:** [forum.dfinity.org](https://forum.dfinity.org/)
+- **GitHub:** [github.com/dfinity/ic](https://github.com/dfinity/ic)

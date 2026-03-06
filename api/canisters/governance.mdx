@@ -1,0 +1,713 @@
+---
+title: "NNS Governance Canister"
+description: "API reference for the Network Nervous System (NNS) governance canister that manages proposals, neurons, and voting"
+---
+
+# NNS Governance Canister
+
+The NNS Governance canister is the core governance system of the Internet Computer Protocol. It manages neurons, proposals, and voting to enable decentralized control of the network.
+
+## Overview
+
+The Governance canister provides:
+
+- **Neuron Management**: Create, configure, and manage ICP neurons with staking and voting power
+- **Proposal System**: Submit and vote on proposals that govern the Internet Computer
+- **Voting Rewards**: Distribute voting rewards to participating neurons
+- **Network Economics**: Manage network-wide economic parameters
+- **SNS Creation**: Launch Service Nervous Systems (SNS) for decentralized applications
+
+## Core Concepts
+
+### Neurons
+
+Neurons are the fundamental unit of governance. They represent staked ICP tokens and provide voting power based on:
+
+- **Stake amount**: The amount of ICP locked in the neuron
+- **Dissolve delay**: The time until the neuron can be dissolved (up to 8 years)
+- **Age**: How long the neuron has been non-dissolving
+
+### Voting Power
+
+Neurons have two types of voting power:
+
+- **Potential Voting Power**: Maximum voting power based on stake, age, and dissolve delay
+- **Deciding Voting Power**: Actual voting power used in proposals, which decreases if the neuron doesn't refresh regularly
+
+Neurons must refresh their voting power by:
+1. Voting directly (not via following)
+2. Setting followees
+3. Calling `refresh_voting_power`
+
+### Proposals
+
+Proposals are suggestions for changes to the Internet Computer. They can:
+
+- Upgrade canisters
+- Modify network economics
+- Manage subnet infrastructure
+- Create new SNS instances
+- Execute arbitrary NNS functions
+
+## Key Methods
+
+### Neuron Management
+
+#### manage_neuron
+
+Manage a neuron by executing various commands.
+
+<ParamField path="neuron_id_or_subaccount" type="NeuronIdOrSubaccount" required>
+  Identifies the neuron to manage, either by neuron ID or subaccount
+</ParamField>
+
+<ParamField path="command" type="ManageNeuronCommandRequest">
+  The operation to perform on the neuron:
+  - `Spawn`: Create a new neuron from maturity
+  - `Split`: Split neuron into two neurons
+  - `Follow`: Set neuron to follow others on a topic
+  - `SetFollowing`: Set multiple followees across topics
+  - `Configure`: Change neuron configuration
+  - `Disburse`: Withdraw ICP from neuron
+  - `DisburseMaturity`: Convert maturity to ICP
+  - `StakeMaturity`: Convert maturity to stake
+  - `MergeMaturity`: Merge maturity into stake
+  - `Merge`: Merge two neurons
+  - `MakeProposal`: Submit a proposal
+  - `RegisterVote`: Vote on a proposal
+  - `RefreshVotingPower`: Refresh the neuron's deciding voting power
+</ParamField>
+
+<ResponseField name="command" type="Command_1">
+  Result of the command execution, which varies based on the command type
+</ResponseField>
+
+#### create_neuron
+
+Create a new neuron using ICRC-2 transfer_from (requires prior approval).
+
+<ParamField path="amount_e8s" type="nat64" required>
+  The amount of ICP to stake in e8s (1 ICP = 100,000,000 e8s)
+</ParamField>
+
+<ParamField path="source_subaccount" type="blob">
+  The subaccount to transfer ICP from (defaults to default subaccount)
+</ParamField>
+
+<ParamField path="controller" type="principal">
+  The controller of the new neuron (defaults to caller)
+</ParamField>
+
+<ParamField path="followees" type="SetFollowing">
+  The followees to set for the new neuron (defaults to network defaults)
+</ParamField>
+
+<ParamField path="dissolve_delay_seconds" type="nat64">
+  The dissolve delay in seconds (defaults to 7 days, max 8 years)
+</ParamField>
+
+<ParamField path="dissolving" type="bool">
+  Whether the neuron should start dissolving immediately (defaults to false)
+</ParamField>
+
+<ParamField path="auto_stake_maturity" type="bool">
+  Whether to automatically stake maturity (defaults to false)
+</ParamField>
+
+<ResponseField name="result" type="CreateNeuronResponse">
+  Returns the newly created neuron ID on success
+</ResponseField>
+
+#### claim_or_refresh_neuron_from_account
+
+Claim or refresh a neuron from a ledger account.
+
+<ParamField path="controller" type="principal">
+  The principal that controls the neuron
+</ParamField>
+
+<ParamField path="memo" type="nat64" required>
+  The memo used when transferring ICP to create the neuron
+</ParamField>
+
+<ResponseField name="result" type="Result_1">
+  Returns the neuron ID if successful, or an error
+</ResponseField>
+
+### Neuron Operations
+
+#### Configure Operations
+
+When using the `Configure` command in `manage_neuron`, you can perform these operations:
+
+**IncreaseDissolveDelay**
+<ParamField path="additional_dissolve_delay_seconds" type="nat32">
+  Number of seconds to add to the dissolve delay (max 8 years total)
+</ParamField>
+
+**StartDissolving**
+Begin the countdown to unlock staked ICP.
+
+**StopDissolving**
+Pause the dissolve countdown and start aging again.
+
+**SetDissolveTimestamp**
+<ParamField path="dissolve_timestamp_seconds" type="nat64">
+  Set an absolute timestamp when the neuron will be dissolved
+</ParamField>
+
+**AddHotKey**
+<ParamField path="new_hot_key" type="principal">
+  Add a principal that can vote and submit proposals (but not disburse)
+</ParamField>
+
+**RemoveHotKey**
+<ParamField path="hot_key_to_remove" type="principal">
+  Remove a previously added hot key
+</ParamField>
+
+**ChangeAutoStakeMaturity**
+<ParamField path="requested_setting_for_auto_stake_maturity" type="bool">
+  Enable or disable automatic staking of maturity
+</ParamField>
+
+**SetVisibility**
+<ParamField path="visibility" type="int32">
+  Set neuron visibility (0 = private, 1 = public)
+</ParamField>
+
+**JoinCommunityFund**
+Make the neuron participate in the Neurons' Fund for SNS launches.
+
+**LeaveCommunityFund**
+Remove the neuron from the Neurons' Fund.
+
+### Proposal Management
+
+#### MakeProposal
+
+Submit a new proposal (via `manage_neuron` command).
+
+<ParamField path="url" type="text" required>
+  URL with additional information about the proposal
+</ParamField>
+
+<ParamField path="title" type="text">
+  Short title for the proposal
+</ParamField>
+
+<ParamField path="summary" type="text" required>
+  Description of the proposal
+</ParamField>
+
+<ParamField path="action" type="ProposalActionRequest" required>
+  The action to execute if the proposal is adopted:
+  - `Motion`: Text motion with no execution
+  - `ManageNetworkEconomics`: Update economic parameters
+  - `ManageNeuron`: Perform neuron operation
+  - `InstallCode`: Install/upgrade canister code
+  - `StopOrStartCanister`: Stop or start a canister
+  - `CreateServiceNervousSystem`: Launch an SNS
+  - `ExecuteNnsFunction`: Execute arbitrary NNS function
+  - `AddOrRemoveNodeProvider`: Manage node providers
+  - `RewardNodeProvider`: Reward node providers
+  - And many more...
+</ParamField>
+
+<ResponseField name="proposal_id" type="ProposalId">
+  The ID of the newly created proposal
+</ResponseField>
+
+<ResponseField name="message" type="text">
+  Optional message with additional information
+</ResponseField>
+
+#### list_proposals
+
+Query proposals with filtering options.
+
+<ParamField path="limit" type="nat32" required>
+  Maximum number of proposals to return
+</ParamField>
+
+<ParamField path="before_proposal" type="ProposalId">
+  Return proposals with IDs less than this (for pagination)
+</ParamField>
+
+<ParamField path="include_status" type="vec int32">
+  Filter by proposal status (1=Open, 2=Rejected, 3=Adopted, 4=Executed, 5=Failed)
+</ParamField>
+
+<ParamField path="include_reward_status" type="vec int32">
+  Filter by reward status
+</ParamField>
+
+<ParamField path="exclude_topic" type="vec int32">
+  Exclude proposals on specific topics
+</ParamField>
+
+<ParamField path="include_all_manage_neuron_proposals" type="bool">
+  Include all manage neuron proposals (otherwise only caller's)
+</ParamField>
+
+<ParamField path="omit_large_fields" type="bool">
+  Omit large fields like ballots to reduce response size
+</ParamField>
+
+<ResponseField name="proposal_info" type="vec ProposalInfo">
+  List of proposals matching the filters
+</ResponseField>
+
+#### get_proposal_info
+
+Get detailed information about a specific proposal.
+
+<ParamField path="proposal_id" type="nat64" required>
+  The ID of the proposal to query
+</ParamField>
+
+<ResponseField name="proposal_info" type="ProposalInfo">
+  Complete information about the proposal including:
+  - Current status and voting deadline
+  - Proposer neuron ID
+  - Vote tallies
+  - Ballots from all neurons
+  - Execution timestamps
+  - Failure reason (if failed)
+</ResponseField>
+
+#### get_pending_proposals
+
+Get all proposals that are currently open for voting.
+
+<ResponseField name="proposals" type="vec ProposalInfo">
+  List of all open proposals
+</ResponseField>
+
+### Voting
+
+#### RegisterVote
+
+Vote on a proposal (via `manage_neuron` command).
+
+<ParamField path="proposal" type="ProposalId" required>
+  The proposal to vote on
+</ParamField>
+
+<ParamField path="vote" type="int32" required>
+  The vote to cast:
+  - 1 = Yes
+  - 2 = No
+</ParamField>
+
+### Query Methods
+
+#### list_neurons
+
+List neurons with filtering and pagination.
+
+<ParamField path="neuron_ids" type="vec nat64">
+  Specific neuron IDs to include
+</ParamField>
+
+<ParamField path="include_neurons_readable_by_caller" type="bool">
+  Include neurons where caller is controller or hotkey
+</ParamField>
+
+<ParamField path="include_public_neurons_in_full_neurons" type="bool">
+  Include full details for public neurons
+</ParamField>
+
+<ParamField path="page_number" type="nat64">
+  Page number for pagination
+</ParamField>
+
+<ParamField path="page_size" type="nat64">
+  Number of neurons per page
+</ParamField>
+
+<ResponseField name="neuron_infos" type="vec NeuronInfo">
+  Public information about neurons (redacted view)
+</ResponseField>
+
+<ResponseField name="full_neurons" type="vec Neuron">
+  Complete neuron data (only for authorized neurons)
+</ResponseField>
+
+<ResponseField name="total_pages_available" type="nat64">
+  Total number of pages available
+</ResponseField>
+
+#### get_full_neuron
+
+Get complete information about a neuron by ID.
+
+<ParamField path="neuron_id" type="nat64" required>
+  The ID of the neuron to query
+</ParamField>
+
+<ResponseField name="neuron" type="Neuron">
+  Complete neuron data if caller is authorized, including:
+  - Stake and maturity
+  - Dissolve state
+  - Followees
+  - Hot keys
+  - Voting power (potential and deciding)
+  - Recent ballots
+</ResponseField>
+
+#### get_neuron_info
+
+Get public information about a neuron.
+
+<ParamField path="neuron_id" type="nat64" required>
+  The ID of the neuron to query
+</ParamField>
+
+<ResponseField name="neuron_info" type="NeuronInfo">
+  Public neuron information including:
+  - Dissolve delay and state
+  - Stake amount
+  - Age in seconds
+  - Voting power
+  - Created timestamp
+</ResponseField>
+
+#### list_known_neurons
+
+List all publicly known neurons (neurons with public visibility).
+
+<ResponseField name="known_neurons" type="vec KnownNeuron">
+  List of known neurons with their metadata:
+  - Neuron ID
+  - Name and description
+  - Links (social media, website, etc.)
+  - Topics they're committed to voting on
+</ResponseField>
+
+#### get_network_economics_parameters
+
+Get current network economic parameters.
+
+<ResponseField name="parameters" type="NetworkEconomics">
+  Current economic parameters including:
+  - Neuron minimum stake
+  - Transaction fees
+  - Reject cost for proposals
+  - Maximum node provider rewards
+  - Voting power economics (refresh thresholds)
+</ResponseField>
+
+#### get_metrics
+
+Get cached governance metrics.
+
+<ResponseField name="metrics" type="GovernanceCachedMetrics">
+  Comprehensive governance statistics including:
+  - Total staked ICP
+  - Total supply
+  - Neuron counts by state
+  - Maturity totals
+  - Voting power distributions
+  - Community fund statistics
+  - Subset metrics for different neuron categories
+</ResponseField>
+
+### Advanced Features
+
+#### list_neuron_votes
+
+Get voting history for a known neuron.
+
+<ParamField path="neuron_id" type="NeuronId" required>
+  The neuron ID (must be a known neuron)
+</ParamField>
+
+<ParamField path="before_proposal" type="ProposalId">
+  Return votes for proposals before this ID (for pagination)
+</ParamField>
+
+<ParamField path="limit" type="nat64">
+  Maximum votes to return (max 500)
+</ParamField>
+
+<ResponseField name="votes" type="vec NeuronVote">
+  List of votes cast by the neuron
+</ResponseField>
+
+<ResponseField name="all_finalized_before_proposal" type="ProposalId">
+  Proposals before this ID are finalized in history
+</ResponseField>
+
+#### get_neurons_fund_audit_info
+
+Get audit information for Neurons' Fund participation in an SNS swap.
+
+<ParamField path="nns_proposal_id" type="ProposalId" required>
+  The NNS proposal ID that created the SNS
+</ParamField>
+
+<ResponseField name="result" type="NeuronsFundAuditInfo">
+  Complete audit trail including:
+  - Initial participation amounts
+  - Final participation amounts
+  - Refund information
+  - Neuron portions allocated
+</ResponseField>
+
+#### simulate_manage_neuron
+
+Simulate a neuron management operation without executing it.
+
+<ParamField path="neuron_id_or_subaccount" type="NeuronIdOrSubaccount" required>
+  The neuron to simulate the operation on
+</ParamField>
+
+<ParamField path="command" type="ManageNeuronCommandRequest" required>
+  The command to simulate
+</ParamField>
+
+<ResponseField name="command" type="Command_1">
+  Simulated result of the command
+</ResponseField>
+
+## Data Types
+
+### Neuron
+
+Represents a staked ICP neuron with governance rights.
+
+<ResponseField name="id" type="NeuronId">
+  Unique identifier for the neuron
+</ResponseField>
+
+<ResponseField name="controller" type="principal">
+  Principal with full control over the neuron
+</ResponseField>
+
+<ResponseField name="hot_keys" type="vec principal">
+  Principals that can vote and submit proposals
+</ResponseField>
+
+<ResponseField name="cached_neuron_stake_e8s" type="nat64">
+  Staked ICP in e8s (1 ICP = 100,000,000 e8s)
+</ResponseField>
+
+<ResponseField name="maturity_e8s_equivalent" type="nat64">
+  Accumulated voting rewards (maturity) in e8s equivalent
+</ResponseField>
+
+<ResponseField name="staked_maturity_e8s_equivalent" type="nat64">
+  Maturity that has been staked to increase voting power
+</ResponseField>
+
+<ResponseField name="neuron_fees_e8s" type="nat64">
+  Accumulated fees that will be deducted on disburse
+</ResponseField>
+
+<ResponseField name="dissolve_state" type="DissolveState">
+  Current dissolve state:
+  - `DissolveDelaySeconds`: Neuron is not dissolving (delay in seconds)
+  - `WhenDissolvedTimestampSeconds`: Neuron is dissolving (timestamp when dissolved)
+</ResponseField>
+
+<ResponseField name="aging_since_timestamp_seconds" type="nat64">
+  When the neuron started aging (reset when dissolving starts)
+</ResponseField>
+
+<ResponseField name="created_timestamp_seconds" type="nat64">
+  When the neuron was created
+</ResponseField>
+
+<ResponseField name="followees" type="vec record { int32; Followees }">
+  Map of topic to followees for automatic voting
+</ResponseField>
+
+<ResponseField name="deciding_voting_power" type="nat64">
+  Current voting power used in proposals (affected by refresh timing)
+</ResponseField>
+
+<ResponseField name="potential_voting_power" type="nat64">
+  Maximum voting power if regularly refreshed
+</ResponseField>
+
+<ResponseField name="voting_power_refreshed_timestamp_seconds" type="nat64">
+  When voting power was last refreshed
+</ResponseField>
+
+<ResponseField name="visibility" type="int32">
+  Visibility setting: 0 = Private, 1 = Public
+</ResponseField>
+
+<ResponseField name="known_neuron_data" type="KnownNeuronData">
+  Public metadata if this is a known neuron
+</ResponseField>
+
+### ProposalInfo
+
+<ResponseField name="id" type="ProposalId">
+  Unique proposal identifier
+</ResponseField>
+
+<ResponseField name="proposer" type="NeuronId">
+  Neuron that submitted the proposal
+</ResponseField>
+
+<ResponseField name="proposal" type="Proposal">
+  Proposal content including title, summary, URL, and action
+</ResponseField>
+
+<ResponseField name="status" type="int32">
+  Current status: 1=Open, 2=Rejected, 3=Adopted, 4=Executed, 5=Failed
+</ResponseField>
+
+<ResponseField name="topic" type="int32">
+  Proposal topic/category
+</ResponseField>
+
+<ResponseField name="ballots" type="vec record { nat64; Ballot }">
+  Map of neuron ID to ballot (vote and voting power)
+</ResponseField>
+
+<ResponseField name="latest_tally" type="Tally">
+  Current vote counts (yes, no, total)
+</ResponseField>
+
+<ResponseField name="proposal_timestamp_seconds" type="nat64">
+  When the proposal was created
+</ResponseField>
+
+<ResponseField name="deadline_timestamp_seconds" type="nat64">
+  Voting deadline (affected by wait-for-quiet)
+</ResponseField>
+
+<ResponseField name="decided_timestamp_seconds" type="nat64">
+  When the proposal was decided (if decided)
+</ResponseField>
+
+<ResponseField name="executed_timestamp_seconds" type="nat64">
+  When the proposal was executed (if executed)
+</ResponseField>
+
+<ResponseField name="failed_timestamp_seconds" type="nat64">
+  When the proposal failed (if failed)
+</ResponseField>
+
+<ResponseField name="failure_reason" type="GovernanceError">
+  Error details if execution failed
+</ResponseField>
+
+<ResponseField name="reward_status" type="int32">
+  Whether the proposal is eligible for voting rewards
+</ResponseField>
+
+## Proposal Topics
+
+Proposals are categorized by topic, which affects voting parameters:
+
+- **NeuronManagement** (1): Neuron operations
+- **ExchangeRate** (2): ICP/XDR exchange rate updates
+- **NetworkEconomics** (3): Economic parameter changes
+- **Governance** (4): Governance system upgrades
+- **NodeAdmin** (5): Node management
+- **ParticipantManagement** (6): Participant operations
+- **SubnetManagement** (7): Subnet configuration
+- **Kyc** (9): KYC verification
+- **NodeProviderRewards** (10): Node provider compensation
+- **IcOsVersionDeployment** (13): IC OS version deployments
+- **IcOsVersionElection** (14): IC OS version elections
+- **SnsAndCommunityFund** (15): SNS and Neurons' Fund
+- **ApiBoundaryNodeManagement** (16): API boundary nodes
+- **SubnetRental** (17): Subnet rental management
+- **ApplicationCanisterManagement** (18): Application canisters
+- **ProtocolCanisterManagement** (19): Protocol canisters
+- **ServiceNervousSystemManagement** (20): SNS management
+
+## Error Types
+
+Common governance error types:
+
+- **Unspecified** (0): Unknown error
+- **InsufficientFunds** (1): Not enough ICP for operation
+- **InvalidCommand** (2): Invalid command parameters
+- **NotAuthorized** (3): Caller not authorized
+- **PreconditionFailed** (4): Operation precondition not met
+- **NotFound** (5): Resource not found
+- **ResourceExhausted** (6): Rate limit or capacity exceeded
+- **InvalidProposal** (7): Invalid proposal parameters
+- **AlreadyExists** (8): Resource already exists
+- **External** (9): External call failed
+- **LedgerUpdateOngoing** (10): Ledger operation in progress
+
+## Best Practices
+
+### For Neuron Holders
+
+1. **Maximize Voting Power**: Increase dissolve delay to 8 years and let neurons age
+2. **Stay Active**: Regularly refresh voting power (vote directly, update followees, or call refresh_voting_power)
+3. **Set Followees**: Configure followees on topics you want to delegate
+4. **Use Hot Keys**: Add hot keys for voting without exposing controller keys
+5. **Auto-Stake Maturity**: Enable to compound rewards automatically
+
+### For Developers
+
+1. **Batch Operations**: Use `list_neurons` pagination for large queries
+2. **Query Methods**: Use query methods when possible for faster responses
+3. **Error Handling**: Always check for errors and handle retry logic
+4. **Simulate First**: Use `simulate_manage_neuron` for testing
+5. **Monitor Refresh**: Track `voting_power_refreshed_timestamp_seconds`
+
+## Examples
+
+### Creating a Neuron
+
+```javascript
+// First, approve the governance canister to spend ICP
+await ledger.icrc2_approve({
+  spender: { owner: governanceCanisterId, subaccount: [] },
+  amount: 100_000_000n, // 1 ICP
+  fee: 10_000n
+});
+
+// Then create the neuron
+const result = await governance.create_neuron({
+  amount_e8s: [100_000_000n],
+  dissolve_delay_seconds: [31_536_000n], // 1 year
+  auto_stake_maturity: [true]
+});
+```
+
+### Voting on a Proposal
+
+```javascript
+const result = await governance.manage_neuron({
+  neuron_id_or_subaccount: [
+    { NeuronId: { id: neuronId } }
+  ],
+  command: [{
+    RegisterVote: {
+      proposal: [{ id: proposalId }],
+      vote: 1 // Yes
+    }
+  }]
+});
+```
+
+### Refreshing Voting Power
+
+```javascript
+const result = await governance.manage_neuron({
+  neuron_id_or_subaccount: [
+    { NeuronId: { id: neuronId } }
+  ],
+  command: [{
+    RefreshVotingPower: {}
+  }]
+});
+```
+
+## See Also
+
+- [ICP Ledger API](/api/canisters/ledger)
+- [SNS Governance API](/api/canisters/sns)
+- [Network Nervous System Documentation](https://internetcomputer.org/docs/current/developer-docs/daos/nns/overview)

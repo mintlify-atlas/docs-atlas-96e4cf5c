@@ -1,122 +1,141 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Internet Computer",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#7c7c7c",
+    "light": "#060606",
+    "dark": "#c8c8c8"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/0c6bd8c3-d8af-4ee6-b093-75a87e442899.svg",
+  "logo": {
+    "light": "https://media.brand.dev/88a6a302-1285-4b4a-9dca-8f59e7a4fce2.svg",
+    "dark": "https://media.brand.dev/88a6a302-1285-4b4a-9dca-8f59e7a4fce2.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/dfinity/ic"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/dfinity/ic"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Overview",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Getting Started",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "getting-started/system-requirements",
+              "getting-started/building",
+              "getting-started/verifying-releases"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Architecture",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "architecture/overview",
+              "architecture/replica",
+              "architecture/consensus",
+              "architecture/execution-environment",
+              "architecture/networking"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Core Components",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "core/nns",
+              "core/sns",
+              "core/canisters",
+              "core/crypto",
+              "core/state-management"
+            ]
+          },
+          {
+            "group": "IC-OS",
+            "pages": [
+              "ic-os/overview",
+              "ic-os/guestos",
+              "ic-os/hostos",
+              "ic-os/setupos",
+              "ic-os/building"
+            ]
+          },
+          {
+            "group": "Chain Integration",
+            "pages": [
+              "chain-integration/bitcoin",
+              "chain-integration/ethereum",
+              "chain-integration/ckbtc",
+              "chain-integration/cketh"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/workspace-structure",
+              "development/testing",
+              "development/contributing",
+              "development/security"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Core APIs",
             "pages": [
-              "api-reference/introduction"
+              "api/types",
+              "api/interfaces",
+              "api/registry"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Canisters",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/canisters/governance",
+              "api/canisters/ledger",
+              "api/canisters/sns"
+            ]
+          },
+          {
+            "group": "Networking",
+            "pages": [
+              "api/networking/p2p",
+              "api/networking/http-endpoints",
+              "api/networking/xnet"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Packages",
+        "groups": [
+          {
+            "group": "Published Libraries",
+            "pages": [
+              "packages/overview",
+              "packages/pocket-ic",
+              "packages/icrc-ledger",
+              "packages/cryptography"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

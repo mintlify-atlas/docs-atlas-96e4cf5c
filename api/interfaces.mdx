@@ -1,0 +1,435 @@
+---
+title: 'Core Interfaces'
+description: 'Trait definitions and interfaces for Internet Computer components'
+---
+
+## Overview
+
+The Internet Computer protocol defines public interfaces for various replica components in `rs/interfaces/`. These traits establish contracts between components, enabling modular development and testing while reducing unnecessary dependencies.
+
+## Consensus Interfaces
+
+Defined in `rs/interfaces/src/consensus.rs`
+
+### PayloadBuilder
+
+<ParamField path="PayloadBuilder" type="trait">
+  Responsible for creating and validating payloads included in consensus blocks.
+</ParamField>
+
+**Trait Definition:**
+```rust
+pub trait PayloadBuilder: Send + Sync {
+    fn get_payload(
+        &self,
+        height: Height,
+        past_payloads: &[(Height, Time, Payload)],
+        context: &ValidationContext,
+        subnet_records: &SubnetRecords,
+    ) -> BatchPayload;
+
+    fn validate_payload(
+        &self,
+        height: Height,
+        proposal_context: &ProposalContext,
+        payload: &Payload,
+        past_payloads: &[(Height, Time, Payload)],
+    ) -> ValidationResult<PayloadValidationError>;
+}
+```
+
+**Methods:**
+
+<ParamField path="get_payload" type="method">
+  Produces a payload that is valid given past payloads and the current context.
+  
+  <Expandable title="parameters">
+    <ResponseField name="height" type="Height">
+      The block height for which to create the payload
+    </ResponseField>
+    <ResponseField name="past_payloads" type="&[(Height, Time, Payload)]">
+      Payloads from blocks above the certified height, in descending order
+    </ResponseField>
+    <ResponseField name="context" type="&ValidationContext">
+      Validation context including certified state and registry version
+    </ResponseField>
+    <ResponseField name="subnet_records" type="&SubnetRecords">
+      Current subnet configuration and records
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="validate_payload" type="method">
+  Validates whether a proposed payload is valid given the context and past payloads.
+  
+  <Expandable title="parameters">
+    <ResponseField name="height" type="Height">
+      The block height of the payload being validated
+    </ResponseField>
+    <ResponseField name="proposal_context" type="&ProposalContext">
+      Context of the block proposal
+    </ResponseField>
+    <ResponseField name="payload" type="&Payload">
+      The payload to validate
+    </ResponseField>
+    <ResponseField name="past_payloads" type="&[(Height, Time, Payload)]">
+      Previously finalized payloads for validation context
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+### PayloadValidationError
+
+<ParamField path="PayloadValidationError" type="enum">
+  Represents validation errors that can occur during payload validation.
+</ParamField>
+
+**Rust Definition:**
+```rust
+pub type PayloadValidationError = ValidationError<InvalidPayloadReason, PayloadValidationFailure>;
+
+pub enum InvalidPayloadReason {
+    InvalidXNetPayload(InvalidXNetPayload),
+    InvalidIngressPayload(InvalidIngressPayloadReason),
+    InvalidSelfValidatingPayload(InvalidSelfValidatingPayloadReason),
+    InvalidCanisterHttpPayload(InvalidCanisterHttpPayloadReason),
+    InvalidQueryStatsPayload(InvalidQueryStatsPayloadReason),
+    InvalidVetKdPayload(InvalidVetKdPayloadReason),
+    PayloadTooBig {
+        expected: NumBytes,
+        received: NumBytes,
+    },
+}
+```
+
+### PayloadWithSizeEstimate
+
+<ParamField path="PayloadWithSizeEstimate" type="struct">
+  Contains a payload together with an estimate of its wire size (not necessarily the same as in-memory size).
+</ParamField>
+
+**Rust Definition:**
+```rust
+pub struct PayloadWithSizeEstimate<T> {
+    pub payload: T,
+    pub wire_size_estimate: NumBytes,
+}
+```
+
+## Registry Interfaces
+
+Defined in `rs/interfaces/registry/src/lib.rs`
+
+### RegistryClient
+
+<ParamField path="RegistryClient" type="trait">
+  Provides methods to query the local state of the registry. All methods return immediately with no side effects on the critical path.
+</ParamField>
+
+**Trait Definition:**
+```rust
+pub trait RegistryClient: Send + Sync {
+    fn get_versioned_value(
+        &self,
+        key: &str,
+        version: RegistryVersion,
+    ) -> RegistryClientVersionedResult<Vec<u8>>;
+
+    fn get_key_family(
+        &self,
+        key_prefix: &str,
+        version: RegistryVersion,
+    ) -> Result<Vec<String>, RegistryClientError>;
+
+    fn get_value(
+        &self,
+        key: &str,
+        version: RegistryVersion
+    ) -> RegistryClientResult<Vec<u8>>;
+
+    fn get_latest_version(&self) -> RegistryVersion;
+
+    fn get_version_timestamp(
+        &self,
+        registry_version: RegistryVersion
+    ) -> Option<Time>;
+}
+```
+
+**Key Methods:**
+
+<ParamField path="get_versioned_value" type="method">
+  Retrieves a registry value at a specific version, returning both the value and metadata.
+  
+  <Expandable title="guarantees">
+    <ResponseField name="availability" type="guarantee">
+      For any key k: get_value(k, get_latest_version()).is_ok() - reported versions are fully available
+    </ResponseField>
+    <ResponseField name="zero_version" type="guarantee">
+      The registry at version 0 has a known empty state
+    </ResponseField>
+    <ResponseField name="determinism" type="guarantee">
+      Two calls with the same arguments always return equal values (if both succeed)
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="get_key_family" type="method">
+  Returns all keys starting with the given prefix that are present at the specified version.
+  
+  <Expandable title="returns">
+    <ResponseField name="Vec<String>" type="Result">
+      List of matching keys (no duplicates, unordered)
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="get_latest_version" type="method">
+  Returns the latest registry version known to this replica. Eventually consistent.
+</ParamField>
+
+<ParamField path="get_version_timestamp" type="method">
+  Returns the time when a specific version became available locally.
+</ParamField>
+
+### RegistryVersionedRecord
+
+<ParamField path="RegistryVersionedRecord<T>" type="struct">
+  A versioned key-value pair returned from the registry.
+</ParamField>
+
+**Rust Definition:**
+```rust
+pub struct RegistryVersionedRecord<T> {
+    pub key: String,
+    pub version: RegistryVersion,
+    pub value: Option<T>,
+}
+```
+
+**Fields:**
+
+<ResponseField name="key" type="String">
+  The registry key
+</ResponseField>
+
+<ResponseField name="version" type="RegistryVersion">
+  The version at which this record was added/updated
+</ResponseField>
+
+<ResponseField name="value" type="Option<T>">
+  The value at this version (None means the key was deleted)
+</ResponseField>
+
+### RegistryDataProvider
+
+<ParamField path="RegistryDataProvider" type="trait">
+  Data source backing the RegistryClient. In production, queries the registry canister on the NNS. For testing, can read from local files.
+</ParamField>
+
+**Trait Definition:**
+```rust
+pub trait RegistryDataProvider: Send + Sync {
+    fn get_updates_since(
+        &self,
+        version: RegistryVersion,
+    ) -> Result<Vec<RegistryRecord>, RegistryDataProviderError>;
+}
+```
+
+**Method:**
+
+<ParamField path="get_updates_since" type="method">
+  Returns registry updates between the given version and some later version.
+  
+  <Expandable title="guarantees">
+    <ResponseField name="version_ordering" type="guarantee">
+      All returned records have version > input version
+    </ResponseField>
+    <ResponseField name="completeness" type="guarantee">
+      Returns all updates for versions in range (version..max_version], where max_version is the maximum version in results
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+## Type Aliases
+
+<ParamField path="RegistryRecord" type="type alias">
+  Represents a versioned key-value pair as stored in the registry canister.
+</ParamField>
+
+```rust
+pub type RegistryRecord = RegistryVersionedRecord<Vec<u8>>;
+```
+
+<ParamField path="RegistryClientResult<T>" type="type alias">
+  Result type for registry value queries.
+</ParamField>
+
+```rust
+pub type RegistryClientResult<T> = Result<Option<T>, RegistryClientError>;
+```
+
+<ParamField path="RegistryClientVersionedResult<T>" type="type alias">
+  Result type for versioned registry queries.
+</ParamField>
+
+```rust
+pub type RegistryClientVersionedResult<T> = 
+    Result<RegistryVersionedRecord<T>, RegistryClientError>;
+```
+
+## Constants
+
+<ParamField path="ZERO_REGISTRY_VERSION" type="RegistryVersion">
+  The empty registry at version 0.
+</ParamField>
+
+```rust
+pub const ZERO_REGISTRY_VERSION: RegistryVersion = RegistryVersion::new(0);
+```
+
+<ParamField path="POLLING_PERIOD" type="Duration">
+  How often the registry client polls the local store for updates.
+</ParamField>
+
+```rust
+pub const POLLING_PERIOD: Duration = Duration::from_secs(5);
+```
+
+## Component Interfaces
+
+The `rs/interfaces/src/lib.rs` module exports interfaces for all replica components:
+
+### Available Interface Modules
+
+<CardGroup cols={2}>
+  <Card title="batch_payload" icon="box">
+    Batch payload construction and validation
+  </Card>
+  <Card title="canister_http" icon="globe">
+    Canister HTTP outcalls interface
+  </Card>
+  <Card title="certification" icon="certificate">
+    State certification interfaces
+  </Card>
+  <Card title="consensus" icon="handshake">
+    Consensus protocol interfaces
+  </Card>
+  <Card title="consensus_pool" icon="database">
+    Consensus artifact pool management
+  </Card>
+  <Card title="crypto" icon="lock">
+    Cryptographic operations
+  </Card>
+  <Card title="dkg" icon="key">
+    Distributed key generation
+  </Card>
+  <Card title="execution_environment" icon="microchip">
+    Canister execution environment
+  </Card>
+  <Card title="idkg" icon="key">
+    Interactive DKG protocols
+  </Card>
+  <Card title="ingress_manager" icon="inbox">
+    Ingress message management
+  </Card>
+  <Card title="ingress_pool" icon="layer-group">
+    Ingress message pool
+  </Card>
+  <Card title="messaging" icon="envelope">
+    Cross-subnet messaging (XNet)
+  </Card>
+  <Card title="p2p" icon="network-wired">
+    Peer-to-peer communication
+  </Card>
+  <Card title="query_stats" icon="chart-line">
+    Query statistics tracking
+  </Card>
+  <Card title="self_validating_payload" icon="check-circle">
+    Self-validating payload types
+  </Card>
+  <Card title="time_source" icon="clock">
+    Time source abstraction
+  </Card>
+  <Card title="validation" icon="shield-check">
+    General validation utilities
+  </Card>
+  <Card title="vetkd" icon="key">
+    Verifiable threshold key derivation
+  </Card>
+</CardGroup>
+
+## Design Philosophy
+
+### Associated Types
+
+Several traits use associated types to avoid direct dependencies on complex types like `ReplicatedState`. This design:
+
+- Creates a cleaner dependency graph
+- Speeds up incremental compilation
+- Enables better separation of concerns
+- Facilitates testing with mock implementations
+
+### Trait Bounds
+
+All interfaces require `Send + Sync` to ensure:
+- Thread-safe sharing across replica components
+- Safe concurrent access to shared state
+- Compatibility with async execution contexts
+
+## Example Usage
+
+### Implementing RegistryClient
+
+```rust
+use ic_interfaces_registry::{RegistryClient, RegistryClientResult};
+use ic_types::RegistryVersion;
+
+struct MyRegistryClient {
+    // implementation fields
+}
+
+impl RegistryClient for MyRegistryClient {
+    fn get_versioned_value(
+        &self,
+        key: &str,
+        version: RegistryVersion,
+    ) -> RegistryClientVersionedResult<Vec<u8>> {
+        // Query local registry cache
+        // ...
+    }
+
+    fn get_latest_version(&self) -> RegistryVersion {
+        // Return current version
+        // ...
+    }
+
+    // ... implement other methods
+}
+```
+
+### Using PayloadBuilder
+
+```rust
+use ic_interfaces::consensus::PayloadBuilder;
+
+fn create_block_payload<P: PayloadBuilder>(
+    builder: &P,
+    height: Height,
+    context: &ValidationContext,
+) -> BatchPayload {
+    builder.get_payload(
+        height,
+        &[], // past payloads
+        context,
+        &subnet_records,
+    )
+}
+```
+
+## See Also
+
+- [Core Types](/api/types) - Type definitions used by these interfaces
+- [Registry API](/api/registry) - Registry canister implementation
+- [Consensus Protocol](https://internetcomputer.org/how-it-works/consensus/) - Overview of IC consensus

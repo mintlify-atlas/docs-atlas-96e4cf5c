@@ -1,0 +1,549 @@
+---
+title: Cryptography Packages
+description: Cryptographic primitives and signature verification for the Internet Computer
+---
+
+The Internet Computer provides a suite of cryptography packages for signature creation, verification, and hashing operations. These packages are optimized for use in both canister code and application development.
+
+## Overview
+
+These packages provide battle-tested cryptographic primitives that work seamlessly on the Internet Computer platform, including support for WebAssembly environments.
+
+<Info>
+All cryptography packages follow strict security practices and are maintained by the DFINITY cryptography team.
+</Info>
+
+## Packages
+
+### ic-ed25519
+
+**Package**: `ic-ed25519` v0.6.0  
+**Purpose**: Ed25519 signature creation and verification
+
+```toml
+[dependencies]
+ic-ed25519 = "0.6.0"
+```
+
+**Features:**
+- Generate Ed25519 key pairs
+- Sign messages with Ed25519 private keys
+- Verify Ed25519 signatures
+- PKCS#8 key encoding/decoding
+- Support for canister signatures
+- Zeroization of private keys
+
+### ic-secp256k1
+
+**Package**: `ic-secp256k1` v0.3.0  
+**Purpose**: ECDSA and Schnorr signatures over secp256k1 curve
+
+```toml
+[dependencies]
+ic-secp256k1 = "0.3.0"
+```
+
+**Features:**
+- ECDSA signature creation and verification (Bitcoin/Ethereum compatible)
+- Schnorr signature support
+- Public key derivation
+- Key serialization (PEM, DER)
+- Secure key generation
+
+### ic-secp256r1
+
+**Package**: `ic-secp256r1` v0.3.0  
+**Purpose**: ECDSA signatures over secp256r1 (P-256/prime256v1) curve
+
+```toml
+[dependencies]
+ic-secp256r1 = "0.3.0"
+```
+
+**Features:**
+- ECDSA signature creation and verification
+- NIST P-256 curve operations
+- WebAuthn compatibility
+- Key serialization
+
+### ic-sha3
+
+**Package**: `ic-sha3` v1.0.0  
+**Purpose**: SHA-3 and Keccak hashing
+
+```toml
+[dependencies]
+ic-sha3 = "1.0.0"
+```
+
+**Features:**
+- SHA-3 family (SHA3-224, SHA3-256, SHA3-384, SHA3-512)
+- Keccak hashing (Ethereum-compatible)
+- Convenience methods for common operations
+
+### ic-signature-verification
+
+**Package**: `ic-signature-verification`  
+**Purpose**: Multi-signature verification utilities
+
+```toml
+[dependencies]
+ic-signature-verification = "0.1"
+```
+
+**Features:**
+- Canister signature verification
+- Multi-signature scheme support
+- Internet Computer-specific signature validation
+
+## Ed25519 Signatures
+
+Ed25519 is a modern signature scheme offering excellent security and performance.
+
+### Generate Key Pair
+
+```rust
+use ic_ed25519::PrivateKey;
+
+// Generate a new random key pair (requires 'rand' feature)
+let private_key = PrivateKey::generate();
+let public_key = private_key.public_key();
+
+println!("Public key: {:?}", public_key.serialize_raw());
+```
+
+### Sign Messages
+
+```rust
+use ic_ed25519::{PrivateKey, Signature};
+
+let private_key = PrivateKey::generate();
+let message = b"Hello, Internet Computer!";
+
+// Sign the message
+let signature = private_key.sign_message(message);
+
+println!("Signature: {:?}", signature.as_bytes());
+```
+
+### Verify Signatures
+
+```rust
+use ic_ed25519::{PublicKey, Signature};
+
+let public_key = private_key.public_key();
+let message = b"Hello, Internet Computer!";
+
+// Verify the signature
+match public_key.verify_signature(message, &signature) {
+    Ok(()) => println!("Signature is valid!"),
+    Err(e) => println!("Signature verification failed: {:?}", e),
+}
+```
+
+### Key Serialization
+
+```rust
+use ic_ed25519::{PrivateKey, PrivateKeyFormat};
+
+// Serialize to PEM (PKCS#8 v1)
+let pem_string = private_key.serialize_pkcs8_pem();
+
+// Deserialize from PEM
+let restored_key = PrivateKey::deserialize_pkcs8_pem(&pem_string)
+    .expect("Failed to deserialize");
+
+// Raw bytes
+let raw_bytes = private_key.serialize_raw();
+let from_raw = PrivateKey::deserialize_raw(&raw_bytes)
+    .expect("Failed to deserialize raw");
+```
+
+### Canister Signatures
+
+Derive canister-compatible signatures:
+
+```rust
+use ic_ed25519::{PrivateKey, CanisterId};
+use candid::Principal;
+
+let private_key = PrivateKey::generate();
+let canister_id = Principal::from_text("aaaaa-aa").unwrap();
+
+// Derive a signature for a specific canister
+let canister_sig = private_key.sign_for_canister(&canister_id, b"message");
+```
+
+## Secp256k1 Signatures (Bitcoin/Ethereum)
+
+Secp256k1 is the curve used by Bitcoin and Ethereum.
+
+### Generate Keys
+
+```rust
+use ic_secp256k1::PrivateKey;
+
+let private_key = PrivateKey::generate();
+let public_key = private_key.public_key();
+
+// Get uncompressed public key (65 bytes)
+let uncompressed = public_key.serialize_uncompressed();
+
+// Get compressed public key (33 bytes)
+let compressed = public_key.serialize_compressed();
+```
+
+### ECDSA Signing
+
+```rust
+use ic_secp256k1::{PrivateKey, MessageHash};
+use sha2::{Sha256, Digest};
+
+let private_key = PrivateKey::generate();
+let message = b"Transaction data";
+
+// Hash the message
+let mut hasher = Sha256::new();
+hasher.update(message);
+let hash = hasher.finalize();
+
+let message_hash = MessageHash::from_bytes(&hash)
+    .expect("Invalid hash");
+
+// Sign
+let signature = private_key.sign_digest(&message_hash);
+```
+
+### ECDSA Verification
+
+```rust
+use ic_secp256k1::PublicKey;
+
+let public_key = private_key.public_key();
+
+// Verify signature
+match public_key.verify_signature(&message_hash, &signature) {
+    Ok(()) => println!("Valid signature"),
+    Err(e) => println!("Invalid signature: {:?}", e),
+}
+```
+
+### Schnorr Signatures
+
+```rust
+use ic_secp256k1::{PrivateKey, SchnorrSignature};
+
+let private_key = PrivateKey::generate();
+let message = b"Schnorr message";
+
+// Create Schnorr signature
+let schnorr_sig = private_key.sign_schnorr(message);
+
+// Verify Schnorr signature
+let public_key = private_key.public_key();
+public_key.verify_schnorr(message, &schnorr_sig)
+    .expect("Schnorr verification failed");
+```
+
+### Ethereum Address Derivation
+
+```rust
+use ic_secp256k1::PublicKey;
+use sha3::{Keccak256, Digest};
+
+fn ethereum_address(public_key: &PublicKey) -> [u8; 20] {
+    let uncompressed = public_key.serialize_uncompressed();
+    
+    // Hash the public key (excluding first byte)
+    let mut hasher = Keccak256::new();
+    hasher.update(&uncompressed[1..]);
+    let hash = hasher.finalize();
+    
+    // Take last 20 bytes
+    let mut address = [0u8; 20];
+    address.copy_from_slice(&hash[12..]);
+    address
+}
+```
+
+## Secp256r1 Signatures (NIST P-256)
+
+Secp256r1 (also known as P-256 or prime256v1) is commonly used in WebAuthn and enterprise systems.
+
+### Generate and Sign
+
+```rust
+use ic_secp256r1::{PrivateKey, MessageHash};
+
+let private_key = PrivateKey::generate();
+let public_key = private_key.public_key();
+
+// Sign a hashed message
+let message_hash = MessageHash::from_bytes(&hash_bytes)
+    .expect("Invalid hash");
+
+let signature = private_key.sign_digest(&message_hash);
+```
+
+### Verify P-256 Signatures
+
+```rust
+let public_key = private_key.public_key();
+
+match public_key.verify_signature(&message_hash, &signature) {
+    Ok(()) => println!("P-256 signature valid"),
+    Err(e) => println!("Verification failed: {:?}", e),
+}
+```
+
+### WebAuthn Integration
+
+P-256 is commonly used in WebAuthn authentication:
+
+```rust
+use ic_secp256r1::PublicKey;
+
+// Parse WebAuthn public key
+let webauthn_key_bytes = /* from authenticator */;
+let public_key = PublicKey::deserialize_der(&webauthn_key_bytes)
+    .expect("Failed to parse WebAuthn key");
+
+// Verify WebAuthn signature
+let auth_data = /* authenticator data */;
+let client_data_hash = /* client data hash */;
+
+// Concatenate auth data and client data hash
+let mut message = Vec::new();
+message.extend_from_slice(&auth_data);
+message.extend_from_slice(&client_data_hash);
+
+// Hash and verify
+use sha2::{Sha256, Digest};
+let hash = Sha256::digest(&message);
+let message_hash = MessageHash::from_bytes(&hash).unwrap();
+
+public_key.verify_signature(&message_hash, &signature)
+    .expect("WebAuthn verification failed");
+```
+
+## SHA-3 and Keccak Hashing
+
+### SHA-3 Hashing
+
+```rust
+use ic_sha3::{Sha3_256, Sha3_512};
+
+// SHA3-256
+let data = b"Hello, world!";
+let hash_256 = Sha3_256::hash(data);
+println!("SHA3-256: {:?}", hash_256);
+
+// SHA3-512
+let hash_512 = Sha3_512::hash(data);
+println!("SHA3-512: {:?}", hash_512);
+```
+
+### Keccak Hashing (Ethereum)
+
+```rust
+use ic_sha3::Keccak256;
+
+let data = b"Ethereum transaction";
+let keccak_hash = Keccak256::hash(data);
+
+println!("Keccak-256: {:?}", keccak_hash);
+```
+
+### Streaming Hashing
+
+```rust
+use ic_sha3::{Sha3_256, Digest};
+
+let mut hasher = Sha3_256::new();
+hasher.update(b"First part ");
+hasher.update(b"Second part");
+let result = hasher.finalize();
+
+println!("Hash: {:?}", result);
+```
+
+### Hash Verification
+
+```rust
+use ic_sha3::Keccak256;
+
+fn verify_hash(data: &[u8], expected_hash: &[u8; 32]) -> bool {
+    let computed_hash = Keccak256::hash(data);
+    computed_hash.as_ref() == expected_hash
+}
+```
+
+## Canister Signature Verification
+
+The `ic-signature-verification` package provides utilities for verifying Internet Computer-specific signatures.
+
+### Verify Canister Signatures
+
+```rust
+use ic_signature_verification::{verify_canister_sig, CanisterSigPublicKey};
+use candid::Principal;
+
+let canister_id = Principal::from_text("aaaaa-aa").unwrap();
+let message = b"Signed by canister";
+let signature = /* canister signature bytes */;
+
+// Create public key from canister ID
+let public_key = CanisterSigPublicKey::new(canister_id, /* seed */ vec![]);
+
+// Verify the signature
+match verify_canister_sig(&public_key, message, &signature) {
+    Ok(()) => println!("Canister signature valid"),
+    Err(e) => println!("Verification failed: {:?}", e),
+}
+```
+
+## Security Best Practices
+
+<Check>Always use cryptographically secure random number generators</Check>
+<Check>Never log or expose private keys</Check>
+<Check>Use zeroization for sensitive key material</Check>
+<Check>Validate all inputs before cryptographic operations</Check>
+<Check>Use appropriate hash functions for your use case</Check>
+<Check>Keep dependencies updated for security patches</Check>
+
+<Warning>
+Never reuse nonces or randomness in signature schemes. This can lead to private key recovery attacks.
+</Warning>
+
+## Common Use Cases
+
+### Bitcoin Integration
+
+```rust
+use ic_secp256k1::PrivateKey;
+use sha2::{Sha256, Digest};
+
+// Sign Bitcoin transaction
+let private_key = PrivateKey::generate();
+let tx_bytes = /* Bitcoin transaction bytes */;
+
+// Double SHA-256 (Bitcoin standard)
+let hash1 = Sha256::digest(tx_bytes);
+let hash2 = Sha256::digest(&hash1);
+
+let message_hash = MessageHash::from_bytes(&hash2).unwrap();
+let signature = private_key.sign_digest(&message_hash);
+```
+
+### Ethereum Transaction Signing
+
+```rust
+use ic_secp256k1::PrivateKey;
+use ic_sha3::Keccak256;
+
+let private_key = PrivateKey::generate();
+let tx_bytes = /* RLP-encoded transaction */;
+
+// Keccak-256 hash
+let hash = Keccak256::hash(&tx_bytes);
+let message_hash = MessageHash::from_bytes(&hash).unwrap();
+
+let signature = private_key.sign_digest(&message_hash);
+
+// Add recovery ID for Ethereum (v value)
+let recovery_id = signature.recovery_id();
+let v = 27 + recovery_id; // For non-EIP-155 transactions
+```
+
+### Content Addressable Storage
+
+```rust
+use ic_sha3::Sha3_256;
+use hex;
+
+fn content_hash(data: &[u8]) -> String {
+    let hash = Sha3_256::hash(data);
+    hex::encode(hash)
+}
+
+// Use as content identifier
+let file_data = std::fs::read("document.pdf").unwrap();
+let content_id = content_hash(&file_data);
+println!("Content ID: {}", content_id);
+```
+
+### Message Authentication
+
+```rust
+use ic_ed25519::PrivateKey;
+
+struct SignedMessage {
+    message: Vec<u8>,
+    signature: Vec<u8>,
+    public_key: Vec<u8>,
+}
+
+fn sign_message(private_key: &PrivateKey, message: &[u8]) -> SignedMessage {
+    let signature = private_key.sign_message(message);
+    let public_key = private_key.public_key();
+    
+    SignedMessage {
+        message: message.to_vec(),
+        signature: signature.as_bytes().to_vec(),
+        public_key: public_key.serialize_raw().to_vec(),
+    }
+}
+
+fn verify_message(signed: &SignedMessage) -> bool {
+    let public_key = PublicKey::deserialize_raw(&signed.public_key).unwrap();
+    let signature = Signature::from_bytes(&signed.signature).unwrap();
+    
+    public_key.verify_signature(&signed.message, &signature).is_ok()
+}
+```
+
+## Performance Considerations
+
+<Tip>
+For canister code, be mindful of instruction limits. Cryptographic operations can be expensive. Consider:
+
+- Batching signature verifications
+- Caching public key derivations
+- Using query calls for verification when possible
+- Optimizing hash operations for large data
+</Tip>
+
+## Testing
+
+Test cryptographic code thoroughly:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ic_ed25519::PrivateKey;
+
+    #[test]
+    fn test_sign_and_verify() {
+        let private_key = PrivateKey::generate();
+        let public_key = private_key.public_key();
+        let message = b"test message";
+        
+        let signature = private_key.sign_message(message);
+        assert!(public_key.verify_signature(message, &signature).is_ok());
+        
+        // Verify wrong message fails
+        let wrong_message = b"wrong message";
+        assert!(public_key.verify_signature(wrong_message, &signature).is_err());
+    }
+}
+```
+
+## Learn More
+
+- [Internet Computer Cryptography](https://internetcomputer.org/docs/current/references/ic-interface-spec#signatures)
+- [Canister Signatures](https://internetcomputer.org/docs/current/references/ic-interface-spec#canister-signatures)
+- [Ed25519 Specification](https://ed25519.cr.yp.to/)
+- [Secp256k1 (Bitcoin)](https://en.bitcoin.it/wiki/Secp256k1)
+- [NIST P-256 Curve](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/digital-signatures)
+- [SHA-3 Standard](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf)

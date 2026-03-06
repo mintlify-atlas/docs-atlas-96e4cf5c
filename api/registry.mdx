@@ -1,0 +1,561 @@
+---
+title: 'Registry API'
+description: 'Registry canister API for network configuration and metadata storage'
+---
+
+## Overview
+
+The Internet Computer registry is a system canister that stores and manages network configuration, node metadata, subnet information, and cryptographic keys. It provides versioned, immutable records that enable coordination across the distributed network.
+
+**Source Location:** `rs/registry/`
+
+## Registry Architecture
+
+### Version-Based Storage
+
+The registry uses a version-based storage model where:
+- Each mutation creates a new version (monotonically increasing)
+- Historical versions are preserved (immutable history)
+- Clients can query any past version
+- Version 0 represents the empty registry
+
+### Storage Representations
+
+The registry supports two stable storage formats:
+
+<Tabs>
+  <Tab title="VERSION_1 (Current)">
+    **Changelog-based representation** indexed by version:
+    
+    ```text
+    [v1] => { (UPSERT, key1, value11) }
+    [v2] => { (UPSERT, key2, value21) }
+    [v3] => { (UPSERT, key1, value12), (UPSERT, key2, value22) }
+    ```
+    
+    Preserves complete history of changes applied to the registry.
+  </Tab>
+  <Tab title="VERSION_UNSPECIFIED (Legacy)">
+    **Delta-based representation** indexed by key:
+    
+    ```text
+    [key1] => { (v1, value11), (v3, value12) }
+    [key2] => { (v2, value21), (v3, value22) }
+    ```
+    
+    Original representation maintained for backward compatibility.
+  </Tab>
+</Tabs>
+
+## Protocol Buffer Definitions
+
+Defined in `rs/registry/canister/proto/ic_registry_canister/pb/v1/registry.proto`
+
+### ChangelogEntry
+
+<ParamField path="ChangelogEntry" type="message">
+  Represents a single mutation in the registry's version history.
+</ParamField>
+
+**Proto Definition:**
+```protobuf
+message ChangelogEntry {
+    uint64 version = 1;
+    bytes encoded_mutation = 2;
+}
+```
+
+**Fields:**
+
+<ResponseField name="version" type="uint64">
+  The registry version produced by this mutation
+</ResponseField>
+
+<ResponseField name="encoded_mutation" type="bytes">
+  Serialized `RegistryAtomicMutateRequest` with preconditions removed. Stored as bytes to ensure hash stability across schema changes.
+</ResponseField>
+
+### RegistryStableStorage
+
+<ParamField path="RegistryStableStorage" type="message">
+  Container for registry data that gets persisted to stable memory.
+</ParamField>
+
+**Proto Definition:**
+```protobuf
+message RegistryStableStorage {
+    enum Version {
+        VERSION_UNSPECIFIED = 0;
+        VERSION_1 = 1;
+    }
+    Version version = 2;
+    repeated ChangelogEntry changelog = 3;
+}
+```
+
+**Fields:**
+
+<ResponseField name="version" type="Version">
+  Indicates which storage representation is used
+</ResponseField>
+
+<ResponseField name="changelog" type="repeated ChangelogEntry">
+  List of all mutations in chronological order (VERSION_1 only)
+</ResponseField>
+
+### RegistryCanisterStableStorage
+
+<ParamField path="RegistryCanisterStableStorage" type="message">
+  Top-level container written to stable storage during canister upgrades.
+</ParamField>
+
+**Proto Definition:**
+```protobuf
+message RegistryCanisterStableStorage {
+    RegistryStableStorage registry = 2;
+    optional uint64 pre_upgrade_version = 3;
+}
+```
+
+**Fields:**
+
+<ResponseField name="registry" type="RegistryStableStorage">
+  The actual registry data
+</ResponseField>
+
+<ResponseField name="pre_upgrade_version" type="uint64" optional>
+  Version before upgrade, used to detect rollbacks after upgrade
+</ResponseField>
+
+## Registry Canister API
+
+Defined in `rs/registry/canister/api/src/lib.rs`
+
+### Node Registration
+
+#### AddNodePayload
+
+<ParamField path="AddNodePayload" type="struct">
+  Request to add a new node to the network.
+</ParamField>
+
+**Candid Definition:**
+```rust
+pub struct AddNodePayload {
+    pub node_signing_pk: Vec<u8>,
+    pub committee_signing_pk: Vec<u8>,
+    pub ni_dkg_dealing_encryption_pk: Vec<u8>,
+    pub transport_tls_cert: Vec<u8>,
+    pub idkg_dealing_encryption_pk: Option<Vec<u8>>,
+    pub xnet_endpoint: String,
+    pub http_endpoint: String,
+    pub node_registration_attestation: Option<SevAttestationPackage>,
+    pub public_ipv4_config: Option<IPv4Config>,
+    pub domain: Option<String>,
+    pub p2p_flow_endpoints: Vec<String>,
+    pub prometheus_metrics_endpoint: String,
+    pub node_reward_type: Option<String>,
+}
+```
+
+**Key Fields:**
+
+<ResponseField name="node_signing_pk" type="Vec<u8>" required>
+  Node's public signing key (raw protobuf PublicKey bytes)
+</ResponseField>
+
+<ResponseField name="committee_signing_pk" type="Vec<u8>" required>
+  Public key for committee participation
+</ResponseField>
+
+<ResponseField name="ni_dkg_dealing_encryption_pk" type="Vec<u8>" required>
+  Non-interactive DKG encryption public key
+</ResponseField>
+
+<ResponseField name="transport_tls_cert" type="Vec<u8>" required>
+  X.509 certificate for transport layer security
+</ResponseField>
+
+<ResponseField name="idkg_dealing_encryption_pk" type="Option<Vec<u8>>">
+  Interactive DKG encryption public key (optional for backward compatibility)
+</ResponseField>
+
+<ResponseField name="xnet_endpoint" type="String" required>
+  Endpoint for cross-subnet communication
+</ResponseField>
+
+<ResponseField name="http_endpoint" type="String" required>
+  HTTP endpoint for client requests
+</ResponseField>
+
+<ResponseField name="node_registration_attestation" type="Option<SevAttestationPackage>">
+  SEV-SNP attestation for secure node registration. When provided, the registry verifies the attestation and extracts the chip_id.
+</ResponseField>
+
+<ResponseField name="public_ipv4_config" type="Option<IPv4Config>">
+  IPv4 network configuration
+</ResponseField>
+
+#### IPv4Config
+
+<ParamField path="IPv4Config" type="struct">
+  Network configuration for IPv4 connectivity.
+</ParamField>
+
+**Candid Definition:**
+```rust
+pub struct IPv4Config {
+    ip_addr: String,
+    gateway_ip_addr: String,
+    prefix_length: u32,
+}
+```
+
+**Validation Rules:**
+
+<Steps>
+  <Step title="IPv4 Address Validation">
+    Both `ip_addr` and `gateway_ip_addr` must be valid IPv4 addresses
+  </Step>
+  <Step title="Prefix Length">
+    Must be ≤ 32 (valid CIDR notation)
+  </Step>
+  <Step title="Subnet Consistency">
+    IP and gateway must be in the same subnet given the prefix length
+  </Step>
+  <Step title="Global Address">
+    IP address must be a globally routable address (not private, loopback, link-local, etc.)
+  </Step>
+</Steps>
+
+**Constructor:**
+```rust
+pub fn try_new(
+    ip_addr: String,
+    gateway_ip_addr: String,
+    prefix_length: u32,
+) -> Result<Self, IPv4ConfigError>
+```
+
+#### UpdateNodeDirectlyPayload
+
+<ParamField path="UpdateNodeDirectlyPayload" type="struct">
+  Request to update an existing node's cryptographic keys.
+</ParamField>
+
+```rust
+pub struct UpdateNodeDirectlyPayload {
+    pub idkg_dealing_encryption_pk: Option<Vec<u8>>,
+}
+```
+
+#### UpdateNodeIPv4ConfigDirectlyPayload
+
+<ParamField path="UpdateNodeIPv4ConfigDirectlyPayload" type="struct">
+  Request to update a node's IPv4 configuration.
+</ParamField>
+
+```rust
+pub struct UpdateNodeIPv4ConfigDirectlyPayload {
+    pub node_id: NodeId,
+    pub ipv4_config: Option<IPv4Config>,
+}
+```
+
+### Subnet Queries
+
+#### GetSubnetForCanisterRequest
+
+<ParamField path="GetSubnetForCanisterRequest" type="message">
+  Query which subnet a canister is assigned to.
+</ParamField>
+
+**Proto Definition:**
+```protobuf
+message GetSubnetForCanisterRequest {
+    ic_base_types.pb.v1.PrincipalId principal = 1;
+}
+```
+
+**Request:**
+<ResponseField name="principal" type="PrincipalId" required>
+  The canister's principal ID
+</ResponseField>
+
+**Response:**
+```protobuf
+message SubnetForCanister {
+    ic_base_types.pb.v1.PrincipalId subnet_id = 1;
+}
+```
+
+<Info>
+  There is no guarantee that the canister exists, even if a subnet ID is returned. This query only checks the routing table.
+</Info>
+
+### Rewards
+
+#### GetNodeProvidersMonthlyXdrRewardsRequest
+
+<ParamField path="GetNodeProvidersMonthlyXdrRewardsRequest" type="struct">
+  Query monthly XDR rewards for node providers.
+</ParamField>
+
+```rust
+pub struct GetNodeProvidersMonthlyXdrRewardsRequest {
+    pub registry_version: Option<u64>,
+}
+```
+
+#### NodeProvidersMonthlyXdrRewards
+
+<ParamField path="NodeProvidersMonthlyXdrRewards" type="message">
+  Maps node provider IDs to their monthly rewards.
+</ParamField>
+
+**Proto Definition:**
+```protobuf
+message NodeProvidersMonthlyXdrRewards {
+    map<string, uint64> rewards = 1;
+    optional uint64 registry_version = 2;
+}
+```
+
+**Fields:**
+
+<ResponseField name="rewards" type="map<string, uint64>">
+  Map from node provider principal ID to reward amount in 10,000ths of an SDR (XDR)
+</ResponseField>
+
+<ResponseField name="registry_version" type="uint64" optional>
+  Registry version at which rewards were calculated
+</ResponseField>
+
+### API Boundary Nodes
+
+#### GetApiBoundaryNodeIdsRequest
+
+<ParamField path="GetApiBoundaryNodeIdsRequest" type="message">
+  Query for API boundary node IDs.
+</ParamField>
+
+```protobuf
+message GetApiBoundaryNodeIdsRequest {}
+```
+
+#### ApiBoundaryNodeIdRecord
+
+<ParamField path="ApiBoundaryNodeIdRecord" type="message">
+  Response containing boundary node IDs.
+</ParamField>
+
+```protobuf
+message ApiBoundaryNodeIdRecord {
+    ic_base_types.pb.v1.PrincipalId id = 1;
+}
+```
+
+### Chunk Management
+
+#### GetChunkRequest
+
+<ParamField path="GetChunkRequest" type="struct">
+  Request for large registry entries split into chunks.
+</ParamField>
+
+```rust
+pub struct GetChunkRequest {
+    pub content_sha256: Option<Vec<u8>>,
+}
+```
+
+<Note>
+  When a registry entry is too large for a single response, it's split into chunks that must be fetched individually.
+</Note>
+
+#### Chunk
+
+<ParamField path="Chunk" type="struct">
+  Response containing chunk data.
+</ParamField>
+
+```rust
+pub struct Chunk {
+    pub content: Option<Vec<u8>>,
+}
+```
+
+## Registry Client Interface
+
+See [Registry Client Interface](/api/interfaces#registry-interfaces) for details on the `RegistryClient` trait.
+
+### Query Methods
+
+<CardGroup cols={2}>
+  <Card title="get_versioned_value" icon="database">
+    Get a value at a specific version with metadata
+  </Card>
+  <Card title="get_value" icon="file">
+    Get a value at a specific version
+  </Card>
+  <Card title="get_key_family" icon="folder-tree">
+    Get all keys matching a prefix
+  </Card>
+  <Card title="get_latest_version" icon="clock">
+    Get the current registry version
+  </Card>
+</CardGroup>
+
+## Stored Configuration Types
+
+The registry stores various types of network configuration:
+
+### Node Records
+- Node public keys (signing, committee, DKG)
+- Network endpoints (XNet, HTTP, P2P)
+- TLS certificates
+- IPv4 configuration
+- SEV attestation data
+- Reward types
+
+### Subnet Records
+- Subnet membership (list of nodes)
+- DKG transcripts
+- Threshold signature keys
+- Subnet configuration parameters
+- Canister routing table
+
+### Cryptographic Keys
+- NI-DKG dealing encryption keys
+- I-DKG dealing encryption keys
+- Threshold signature public keys
+- Chain key configurations
+
+### Network Topology
+- Subnet assignments
+- Node provider information
+- API boundary nodes
+- Routing tables
+
+## Security Features
+
+### SEV-SNP Attestation
+
+<ParamField path="NodeRegistrationAttestationCustomData" type="struct">
+  Custom data embedded in SEV attestation reports for secure node registration.
+</ParamField>
+
+**DER Encoding:**
+```rust
+pub struct NodeRegistrationAttestationCustomData<'a> {
+    pub node_signing_pk: OctetStringRef<'a>,
+}
+```
+
+**Purpose:**
+- Binds the attestation to the node by including `node_signing_pk`
+- Used to construct and verify `node_registration_attestation`
+- Ensures registered nodes have valid hardware attestations
+
+**Namespace:**
+```rust
+fn namespace(&self) -> SevCustomDataNamespace {
+    SevCustomDataNamespace::NodeRegistration
+}
+```
+
+## Version Management
+
+### Version Guarantees
+
+<Check>
+  **Monotonically Increasing**: Each mutation produces version n+1 from version n
+</Check>
+
+<Check>
+  **Immutability**: Historical versions never change once created
+</Check>
+
+<Check>
+  **Availability**: Latest version is always fully available to clients
+</Check>
+
+<Check>
+  **Determinism**: Same query parameters always return the same result
+</Check>
+
+### Empty Registry
+
+```rust
+pub const ZERO_REGISTRY_VERSION: RegistryVersion = RegistryVersion::new(0);
+```
+
+Version 0 represents the empty registry state. All keys return `None` at this version.
+
+## Example Usage
+
+### Querying Registry
+
+```rust
+use ic_interfaces_registry::RegistryClient;
+use ic_types::RegistryVersion;
+
+fn get_node_record(client: &dyn RegistryClient, node_id: &str) -> Option<Vec<u8>> {
+    let latest = client.get_latest_version();
+    let key = format!("node_record_{}", node_id);
+    
+    client.get_value(&key, latest).ok().flatten()
+}
+```
+
+### Adding a Node
+
+```rust
+use registry_canister_api::AddNodePayload;
+
+let payload = AddNodePayload {
+    node_signing_pk: signing_key_bytes,
+    committee_signing_pk: committee_key_bytes,
+    ni_dkg_dealing_encryption_pk: dkg_key_bytes,
+    transport_tls_cert: tls_cert_bytes,
+    idkg_dealing_encryption_pk: Some(idkg_key_bytes),
+    xnet_endpoint: "https://node.example.com:8080".to_string(),
+    http_endpoint: "https://node.example.com:8443".to_string(),
+    node_registration_attestation: Some(attestation_package),
+    public_ipv4_config: Some(IPv4Config::try_new(
+        "203.0.113.42".to_string(),
+        "203.0.113.1".to_string(),
+        24,
+    )?),
+    domain: Some("node.example.com".to_string()),
+    // ...
+};
+```
+
+### Polling for Updates
+
+```rust
+use ic_interfaces_registry::POLLING_PERIOD;
+use std::time::Duration;
+
+async fn poll_registry(client: &dyn RegistryClient) {
+    let mut last_version = client.get_latest_version();
+    
+    loop {
+        tokio::time::sleep(POLLING_PERIOD).await;
+        
+        let current = client.get_latest_version();
+        if current > last_version {
+            // Handle new version
+            last_version = current;
+        }
+    }
+}
+```
+
+## See Also
+
+- [Core Types](/api/types) - Registry version and ID types
+- [Core Interfaces](/api/interfaces) - RegistryClient trait definition
+- [NNS Governance](https://internetcomputer.org/docs/current/developer-docs/daos/nns/overview) - How registry updates are governed
+- [Threshold Cryptography](https://internetcomputer.org/how-it-works/threshold-ecdsa-signing/) - DKG and threshold signatures

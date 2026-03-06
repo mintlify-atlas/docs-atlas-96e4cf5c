@@ -1,0 +1,699 @@
+---
+title: State Management
+description: Learn about state synchronization, checkpointing, and certification in the Internet Computer
+---
+
+The State Manager is responsible for maintaining, persisting, and synchronizing the replicated state across all nodes in a subnet. It provides critical functionality for state certification, checkpointing, and state synchronization.
+
+## Overview
+
+The State Manager component handles:
+
+<CardGroup cols={2}>
+  <Card title="State Persistence" icon="floppy-disk">
+    Writing replicated state to disk as checkpoints
+  </Card>
+  <Card title="State Certification" icon="certificate">
+    Creating certified snapshots for query responses
+  </Card>
+  <Card title="State Synchronization" icon="arrows-rotate">
+    Catching up nodes by transferring state
+  </Card>
+  <Card title="Checkpoint Management" icon="list-check">
+    Managing checkpoint lifecycle and storage
+  </Card>
+</CardGroup>
+
+<Info>
+The State Manager is implemented in `rs/state_manager/` and interfaces with execution, consensus, and networking components.
+</Info>
+
+## Architecture
+
+```
+State Manager (rs/state_manager/src/lib.rs)
+├── Checkpointing (checkpoint.rs)
+│   ├── Create checkpoints from replicated state
+│   ├── Load checkpoints from disk
+│   └── Manage checkpoint lifecycle
+├── State Sync (state_sync.rs)
+│   ├── Fetch state from peers
+│   ├── Validate received chunks
+│   └── Reconstruct complete state
+├── Certification (lib.rs)
+│   ├── Compute state hash trees
+│   ├── Generate certification metadata
+│   └── Produce witnesses for queries
+├── Manifest (manifest.rs)
+│   ├── Content-addressable chunks
+│   ├── File metadata and hashing
+│   └── Deduplication and compression
+└── Tip Management (tip.rs)
+    ├── Mutable in-memory state
+    ├── Page map management
+    └── Background persistence
+```
+
+## Replicated State
+
+The replicated state represents the complete state of the subnet:
+
+```rust
+// From rs/replicated_state/
+struct ReplicatedState {
+    // Canister states
+    canister_states: BTreeMap<CanisterId, CanisterState>,
+    
+    // System metadata
+    system_metadata: SystemMetadata,
+    
+    // Network topology
+    network_topology: NetworkTopology,
+    
+    // Subnet features and configuration
+    subnet_queues: CanisterQueues,
+    
+    // Bitcoin state (if enabled)
+    bitcoin_state: Option<BitcoinState>,
+}
+```
+
+<Tabs>
+  <Tab title="Canister State">
+    Each canister maintains:
+    - **Wasm module**: Compiled code
+    - **Wasm memory**: Heap state
+    - **Stable memory**: Persistent storage
+    - **Message queues**: Input and output queues
+    - **System state**: Cycles, controllers, etc.
+    - **Execution state**: Call contexts
+  </Tab>
+  
+  <Tab title="System Metadata">
+    Subnet-level information:
+    - Batch numbers and timestamps
+    - Generated IDs (canister, message)
+    - Streams to/from other subnets
+    - Ingress history
+  </Tab>
+  
+  <Tab title="Network Topology">
+    IC network structure:
+    - Subnet membership
+    - Routing tables
+    - Node public keys
+    - Registry version
+  </Tab>
+</Tabs>
+
+## Checkpointing
+
+Checkpoints are persistent snapshots of replicated state at specific heights.
+
+### Checkpoint Creation
+
+<Steps>
+  <Step title="State Preparation">
+    Prepare the state for persistence:
+    ```rust
+    // From rs/state_manager/src/checkpoint.rs
+    // - Flush page map deltas to disk
+    // - Strip in-memory overlays
+    // - Filter canister snapshots
+    ```
+  </Step>
+  
+  <Step title="Tip-to-Checkpoint">
+    Convert mutable tip to immutable checkpoint:
+    ```rust
+    // Move files from tip/ to checkpoints/<height>/
+    // Create hard links for unchanged files
+    // Write new/modified files
+    ```
+  </Step>
+  
+  <Step title="Serialization">
+    Serialize state components:
+    ```rust
+    // Canister metadata → canister.pbuf
+    // System metadata → system_metadata.pbuf
+    // Message queues → queues.pbuf
+    // Wasm state → page files (memory, stable memory)
+    ```
+  </Step>
+  
+  <Step title="Verification">
+    Mark checkpoint as complete and verified:
+    ```rust
+    // Compute state root hash
+    // Write completion marker
+    // Add to available checkpoints
+    ```
+  </Step>
+</Steps>
+
+### Checkpoint Interval
+
+Checkpoints are created periodically:
+
+```rust
+// From rs/state_manager/src/lib.rs
+// Default: Every 500 rounds (~40 seconds at 5 rounds/sec)
+const NUM_ROUNDS_BEFORE_CHECKPOINT_TO_WRITE_OVERLAY: u64 = 50;
+
+// Checkpoint threads for parallel I/O
+pub const NUMBER_OF_CHECKPOINT_THREADS: u32 = 16;
+```
+
+<Tip>
+Checkpoint interval balances persistence overhead with state recovery time. More frequent checkpoints mean faster recovery but higher I/O load.
+</Tip>
+
+### Page Maps
+
+Canister memory is managed using page maps:
+
+```
+Page Map (4KB pages)
+├── Base Layer (from checkpoint)
+│   └── Immutable page files
+└── Delta Layers (overlays)
+    ├── Recent modifications
+    └── Copy-on-write semantics
+```
+
+**Benefits:**
+- **Efficient storage**: Only store changed pages
+- **Fast checkpointing**: Hard-link unchanged pages
+- **Copy-on-write**: Preserve checkpoint immutability
+- **Deduplication**: Share identical pages across canisters
+
+## State Certification
+
+Certification enables clients to verify query responses:
+
+### Hash Tree Construction
+
+<Steps>
+  <Step title="Build Labeled Tree">
+    Create hierarchical tree from state:
+    ```rust
+    // From rs/state_manager/src/lib.rs
+    // Labeled tree structure:
+    // /canister/<id>/certified_data
+    // /canister/<id>/metadata/<name>
+    // /time
+    // /subnet/<id>/metrics
+    ```
+  </Step>
+  
+  <Step title="Compute Hash Tree">
+    Hash the tree using Merkle tree:
+    ```rust
+    // Each node: hash = H(label || hash(children))
+    // Leaves: hash = H(value)
+    // Root hash represents entire state
+    ```
+  </Step>
+  
+  <Step title="Threshold Sign">
+    Subnet collectively signs the root hash:
+    ```rust
+    // Consensus delivers certification
+    // Threshold BLS signature
+    // Single signature from subnet
+    ```
+  </Step>
+  
+  <Step title="Generate Witnesses">
+    Create Merkle proofs for specific paths:
+    ```rust
+    // Witness includes:
+    // - Path to queried data
+    // - Sibling hashes for verification
+    // - Root hash (signed by subnet)
+    ```
+  </Step>
+</Steps>
+
+### Certified Queries
+
+Queries return certified responses:
+
+```
+Client → Query Call → Replica
+              ↓
+        Execute query
+              ↓
+        Generate witness
+              ↓
+        Response + Certificate + Witness
+              ↓
+        Client verifies:
+        1. Witness reconstructs root hash
+        2. Signature valid on root hash
+        3. Data matches witness
+```
+
+<CodeGroup>
+```rust Server Side (Replica)
+// From rs/state_manager/src/lib.rs
+// Generate certified response:
+// 1. Execute query
+// 2. Get witness for queried path
+// 3. Attach certificate (threshold signature)
+// 4. Return to client
+```
+
+```rust Client Side
+use ic_crypto_tree_hash::*;
+
+// Verify response:
+// 1. Reconstruct root hash from witness
+// 2. Verify threshold signature
+// 3. Check data in witness matches response
+```
+</CodeGroup>
+
+### Certification Scope
+
+Different scopes of certification:
+
+<table>
+  <thead>
+    <tr>
+      <th>Scope</th>
+      <th>What's Certified</th>
+      <th>Use Case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>**Full**</td>
+      <td>Complete state hash tree</td>
+      <td>Regular state certification</td>
+    </tr>
+    <tr>
+      <td>**Metadata**</td>
+      <td>Only certification metadata</td>
+      <td>During catch-up (optimization)</td>
+    </tr>
+  </tbody>
+</table>
+
+## State Synchronization
+
+State sync enables nodes to catch up by fetching state from peers.
+
+### When State Sync Occurs
+
+<CardGroup cols={2}>
+  <Card title="Node Startup" icon="power-off">
+    New or restarted nodes need to catch up
+  </Card>
+  <Card title="Subnet Catch-Up" icon="forward">
+    Lagging nodes fetch recent state
+  </Card>
+  <Card title="Subnet Join" icon="user-plus">
+    New nodes joining existing subnet
+  </Card>
+  <Card title="State Divergence" icon="code-branch">
+    Recovery from corrupted state (rare)
+  </Card>
+</CardGroup>
+
+### State Sync Protocol
+
+<Steps>
+  <Step title="Initiate Sync">
+    Determine need for state sync:
+    ```rust
+    // From rs/state_manager/src/state_sync.rs
+    // Trigger conditions:
+    // - Missing checkpoint for required height
+    // - State hash mismatch
+    // - Consensus requests catch-up
+    ```
+  </Step>
+  
+  <Step title="Fetch Manifest">
+    Request state manifest from peers:
+    ```rust
+    // Manifest describes state structure:
+    // - File table (all files in checkpoint)
+    // - Chunk table (content-addressed chunks)
+    // - Root hash for verification
+    ```
+  </Step>
+  
+  <Step title="Download Chunks">
+    Fetch chunks in parallel:
+    ```rust
+    // From rs/state_manager/src/state_sync/chunkable/
+    // - Request chunks from multiple peers
+    // - Verify chunk hashes
+    // - Detect and handle corrupted chunks
+    // - Track progress and remaining chunks
+    ```
+  </Step>
+  
+  <Step title="Reassemble State">
+    Reconstruct checkpoint from chunks:
+    ```rust
+    // - Preallocate files
+    // - Write chunks to correct positions
+    // - Verify file hashes
+    // - Hard-link files from existing checkpoints (optimization)
+    ```
+  </Step>
+  
+  <Step title="Validate and Load">
+    Verify and activate the synced state:
+    ```rust
+    // - Load checkpoint into memory
+    // - Verify state root hash
+    // - Mark checkpoint as verified
+    // - Resume normal operation
+    ```
+  </Step>
+</Steps>
+
+### Manifest and Chunks
+
+**Manifest Structure:**
+
+```rust
+// From rs/state_manager/src/state_sync/types.rs
+struct Manifest {
+    // Version for compatibility
+    version: u32,
+    
+    // Files in checkpoint
+    file_table: Vec<FileInfo>,
+    
+    // Content-addressed chunks
+    chunk_table: Vec<ChunkInfo>,
+}
+
+struct FileInfo {
+    relative_path: PathBuf,
+    size_bytes: u64,
+    hash: [u8; 32],
+}
+
+struct ChunkInfo {
+    file_index: u32,
+    offset: u64,
+    size: u32,
+    hash: [u8; 32],
+}
+```
+
+**Chunk Properties:**
+- Fixed size (typically 1 MB)
+- Content-addressed by hash
+- Can be deduplicated across files
+- Fetched independently and in parallel
+
+<Info>
+Chunking enables efficient parallel downloads and deduplication of identical data across the checkpoint.
+</Info>
+
+### State Sync Optimizations
+
+<AccordionGroup>
+  <Accordion title="Hard-Linking">
+    Reuse files from existing checkpoints:
+    ```rust
+    // If file with same hash exists locally:
+    // - Create hard link instead of downloading
+    // - Saves bandwidth and disk space
+    // - Speeds up state sync significantly
+    ```
+  </Accordion>
+  
+  <Accordion title="Chunk Deduplication">
+    Avoid downloading duplicate chunks:
+    ```rust
+    // Same chunk appearing in multiple files:
+    // - Download once
+    // - Copy to all required positions
+    // - Common for canister binaries
+    ```
+  </Accordion>
+  
+  <Accordion title="Parallel Fetching">
+    Download from multiple peers:
+    ```rust
+    // From rs/state_manager/src/state_sync.rs
+    // - Request different chunks from different nodes
+    // - Load balance across subnet
+    // - Maximize bandwidth utilization
+    ```
+  </Accordion>
+  
+  <Accordion title="Validation Skipping">
+    Skip validation for recent checkpoints:
+    ```rust
+    // From rs/state_manager/src/state_sync.rs
+    const MAX_HEIGHT_DIFFERENCE_WITHOUT_VALIDATION: u64 = 10_000;
+    
+    // If syncing to recent state:
+    // - Skip full validation
+    // - Reduces sync time
+    // - Still verify hashes
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### State Sync Metrics
+
+The State Manager tracks various metrics:
+
+```rust
+// From rs/state_manager/src/lib.rs
+struct StateSyncMetrics {
+    size: IntCounterVec,              // Bytes fetched
+    duration: HistogramVec,           // Sync time
+    remaining: IntGauge,              // Chunks left
+    corrupted_chunks: IntCounterVec,  // Invalid chunks
+}
+```
+
+## Storage Layout
+
+State is organized on disk in a structured layout:
+
+```
+state/
+├── checkpoints/
+│   ├── 000000000000100/  (height 100)
+│   │   ├── system_metadata.pbuf
+│   │   ├── subnet_queues.pbuf
+│   │   └── canister_states/
+│   │       └── 000000000000000001/  (canister ID)
+│   │           ├── canister.pbuf
+│   │           ├── queues.pbuf
+│   │           ├── software.wasm
+│   │           └── vmemory_0.bin (page file)
+│   └── 000000000000200/  (height 200)
+├── tip/
+│   └── (mutable in-memory state files)
+├── backups/
+│   └── (backup checkpoints)
+├── diverged_checkpoints/
+│   └── (checkpoints that diverged)
+└── states_metadata.pbuf
+    (manifest cache and metadata)
+```
+
+<Warning>
+Checkpoint directories are immutable once created. Never modify files within verified checkpoints.
+</Warning>
+
+## Tip Management
+
+The "tip" is the current mutable state:
+
+```rust
+// From rs/state_manager/src/tip.rs
+// Tip contains:
+// - Latest replicated state
+// - Page map overlays (deltas)
+// - Pending state changes
+
+// Background thread:
+// - Periodically flushes tip to checkpoint
+// - Merges page map deltas
+// - Manages memory usage
+```
+
+**Tip Operations:**
+
+<Tabs>
+  <Tab title="State Updates">
+    Execution modifies tip:
+    ```rust
+    // After each batch execution:
+    // 1. Update tip with new state
+    // 2. Record changes in page map overlays
+    // 3. Advance tip height
+    ```
+  </Tab>
+  
+  <Tab title="Page Map Merging">
+    Consolidate delta layers:
+    ```rust
+    // Periodically merge overlays:
+    // - Reduces memory overhead
+    // - Improves read performance
+    // - Prepares for checkpointing
+    ```
+  </Tab>
+  
+  <Tab title="Checkpoint Flushing">
+    Persist tip to disk:
+    ```rust
+    // At checkpoint interval:
+    // 1. Freeze current tip
+    // 2. Create new checkpoint
+    // 3. Create new tip from checkpoint
+    ```
+  </Tab>
+</Tabs>
+
+## Performance Considerations
+
+### Checkpoint Performance
+
+<CardGroup cols={2}>
+  <Card title="Parallel I/O" icon="arrows-split-up-and-left">
+    Uses 16 threads for parallel file operations during checkpointing
+  </Card>
+  <Card title="Hard Links" icon="link">
+    Reuses unchanged files via hard links, avoiding copies
+  </Card>
+  <Card title="Incremental Writes" icon="arrows-rotate">
+    Only writes modified pages through overlays
+  </Card>
+  <Card title="Background Processing" icon="clock">
+    Checkpoint creation happens asynchronously in background
+  </Card>
+</CardGroup>
+
+### State Sync Performance
+
+**Typical State Sync Times:**
+- Small state (< 1 GB): ~30 seconds
+- Medium state (10 GB): 2-5 minutes
+- Large state (100+ GB): 10-30 minutes
+
+**Performance Factors:**
+- Network bandwidth between nodes
+- Disk I/O performance
+- Amount of existing local state (hard-linking)
+- Number of peers serving chunks
+
+<Tip>
+State sync performance improves significantly if the node has recent checkpoints that share files with the target state.
+</Tip>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Monitor Disk Space">
+    Ensure sufficient disk space for checkpoints:
+    ```bash
+    # State Manager automatically manages old checkpoints
+    # but monitor for:
+    # - Disk usage trends
+    # - Large canister states
+    # - Checkpoint accumulation
+    ```
+  </Accordion>
+  
+  <Accordion title="Plan for State Sync">
+    Account for state sync times:
+    ```
+    - New nodes need time to sync
+    - Budget for initial sync duration
+    - Consider subnet size and state size
+    - Plan node additions accordingly
+    ```
+  </Accordion>
+  
+  <Accordion title="Optimize Canister State">
+    Keep canister state efficient:
+    ```rust
+    // - Use stable memory for large data
+    // - Implement garbage collection
+    // - Avoid unnecessary state growth
+    // - Compress data when appropriate
+    ```
+  </Accordion>
+  
+  <Accordion title="Understand Certification">
+    Design for certified queries:
+    ```rust
+    // - Store queryable data in certified_data
+    // - Keep certification tree shallow
+    // - Minimize data in certified responses
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Source Code Reference
+
+<CodeGroup>
+```rust State Manager Core
+// rs/state_manager/src/lib.rs
+// Main StateManagerImpl with:
+// - Checkpoint management
+// - Certification logic
+// - API implementation
+```
+
+```rust Checkpointing
+// rs/state_manager/src/checkpoint.rs
+// - make_unvalidated_checkpoint(): Create checkpoint
+// - load_checkpoint(): Load from disk
+// - Page map handling
+```
+
+```rust State Sync
+// rs/state_manager/src/state_sync.rs
+// - StateSync implementation
+// - Chunkable protocol
+// - Manifest handling
+```
+
+```rust Manifests
+// rs/state_manager/src/manifest.rs
+// - compute_bundled_manifest(): Create manifest
+// - File and chunk tables
+// - Hash computation
+```
+</CodeGroup>
+
+**Key Directories:**
+- `rs/state_manager/src/`: Main implementation
+- `rs/state_layout/`: Disk layout structures
+- `rs/replicated_state/`: State data structures
+- `rs/interfaces/state_manager/`: Public interfaces
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Canisters" href="/core/canisters">
+    Understand canister state structure
+  </Card>
+  <Card title="Cryptography" href="/core/crypto">
+    Learn about hash trees and certification
+  </Card>
+  <Card title="Consensus" href="/architecture/consensus">
+    How consensus uses certified state
+  </Card>
+  <Card title="Execution" href="/architecture/execution-environment">
+    How execution modifies replicated state
+  </Card>
+</CardGroup>

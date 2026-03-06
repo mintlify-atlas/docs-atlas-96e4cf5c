@@ -1,0 +1,332 @@
+---
+title: "GuestOS"
+description: "The virtual machine operating system that executes the Internet Computer protocol"
+---
+
+## Introduction
+
+GuestOS is the operating system that runs inside a QEMU virtual machine on top of HostOS. It contains the replica and orchestrator binaries and is where the actual Internet Computer protocol execution occurs.
+
+The GuestOS virtual machine provides:
+- Consistent runtime environment across various hardware platforms
+- Secure isolation from the host system
+- Unified upgrade mechanism for the OS and all IC services
+
+<Info>
+All IC protocol operations—including consensus, message routing, and canister execution—run exclusively in GuestOS. HostOS does not perform any trusted protocol operations.
+</Info>
+
+## Architecture
+
+### Virtual Machine Execution
+
+GuestOS runs as a QEMU/KVM virtual machine with specific characteristics:
+
+- **CPU Passthrough**: Direct access to physical CPU features and capabilities
+- **Memory**: Configurable memory allocation for replica operations
+- **Storage**: Virtual disk with encrypted partitions for data and state
+- **Networking**: Virtualized network interface managed by HostOS
+
+### Core Components
+
+GuestOS includes several key components:
+
+<AccordionGroup>
+  <Accordion title="IC Replica">
+    The core Internet Computer protocol implementation that handles:
+    - Consensus participation
+    - Message routing
+    - Canister execution
+    - State management
+  </Accordion>
+  
+  <Accordion title="Orchestrator">
+    Manages the replica lifecycle and coordinates:
+    - Replica upgrades
+    - Configuration updates
+    - Health monitoring
+    - Registry synchronization
+  </Accordion>
+  
+  <Accordion title="Node Manager">
+    Supervises and starts IC services:
+    - Monitors replica process
+    - Handles service restarts
+    - Manages service dependencies
+  </Accordion>
+  
+  <Accordion title="Node Exporter">
+    Exports system metrics for monitoring:
+    - Hardware metrics
+    - System performance
+    - Resource utilization
+    - Custom IC metrics
+  </Accordion>
+</AccordionGroup>
+
+## Disk Layout
+
+GuestOS uses a sophisticated partition structure to enable secure A/B upgrades:
+
+```
+/dev/vda1  - esp       (EFI system partition)
+/dev/vda2  - grub      (Grub bootloader modules and config)
+/dev/vda3  - config    (System config store)
+/dev/vda4  - A_boot    (Boot partition for system A)
+/dev/vda5  - A_root    (Root partition for system A)
+/dev/vda6  - A_var     (Mutable data partition for system A)
+/dev/vda7  - B_boot    (Boot partition for system B)
+/dev/vda8  - B_root    (Root partition for system B)
+/dev/vda9  - B_var     (Mutable data partition for system B)
+/dev/vda10 - store     (Encrypted LVM for payload data)
+```
+
+### Key Partitions
+
+<Tabs>
+  <Tab title="EFI System Partition">
+    Contains the primary GRUB bootloader at `EFI/Boot/bootx64.efi`. This bootloader is signed and verified by EFI firmware for tamper resistance.
+  </Tab>
+  
+  <Tab title="Config Partition">
+    Stores configuration data that persists across system upgrades:
+    - Machine ID
+    - SSH host keys
+    - Node exporter TLS keys
+    - Bootstrap configuration
+  </Tab>
+  
+  <Tab title="Root Partitions">
+    Immutable ext4 filesystems set up with dm-verity integrity protection. Mounted read-only to prevent tampering. Contains the OS and all system binaries.
+  </Tab>
+  
+  <Tab title="Var Partitions">
+    Encrypted mutable partitions for `/var` filesystem. Wiped on system upgrades but persist across reboots. Used for logs and runtime data.
+  </Tab>
+  
+  <Tab title="Store Partition">
+    Encrypted LVM containing logical volumes for IC payload data:
+    - `store/shared-crypto`: Cryptographic keys and certificates
+    - `store/shared-backup`: Backup subnet state
+    - `store/shared-data`: Persistent IC data and state
+    
+    Created on first boot and preserved across upgrades.
+  </Tab>
+</Tabs>
+
+## Boot Sequence
+
+The GuestOS boot process involves several IC-specific initialization steps:
+
+### Early Boot (Initramfs)
+
+1. **Machine ID Loading**: Check `/config` for existing machine-id
+2. **Root Filesystem Switch**: Mount the root partition (read-only)
+3. **Boot Partition Mount**: Mount appropriate boot partition (A or B)
+
+### System Initialization
+
+<Steps>
+  <Step title="Mount Configuration Media">
+    Service: `mount-config.service`
+    
+    Locates and mounts the configuration device (USB, device with serial "config", or filesystem labeled "CONFIG") to `/mnt/config`.
+  </Step>
+  
+  <Step title="Set Up Encryption">
+    Service: `setup-data-encryption.service`
+    
+    On first boot, creates the 10th partition for encrypted storage, generates encryption key, and sets up encrypted LVM.
+  </Step>
+  
+  <Step title="Set Up SSH Keys">
+    Service: `generate-host-ssh-keys.service`
+    
+    Generates SSH host keys on first boot and stores them in the config partition. Keys are bind-mounted to `/etc/ssh` on subsequent boots.
+  </Step>
+  
+  <Step title="Initialize Logical Volumes">
+    Service: `setup-lvs.service`
+    
+    Creates volume group `store` and logical volumes:
+    - `store/shared-crypto`
+    - `store/shared-backup`
+    - `store/shared-data`
+  </Step>
+  
+  <Step title="Bootstrap IC Node">
+    Service: `bootstrap-ic-node.service`
+    
+    On first boot only, processes `ic-bootstrap.tar` from `/mnt/config` to populate:
+    - SSH authorized keys
+    - `/var/lib/ic/data` initial state
+    - `/var/lib/ic/crypto` cryptographic material
+  </Step>
+  
+  <Step title="Configure Networking">
+    Service: `generate-network-config.service`
+    
+    Parses network configuration from config partition and generates systemd-networkd configuration files.
+  </Step>
+  
+  <Step title="Start IC Services">
+    Services: `node_exporter.service`, `nodemanager.service`
+    
+    Starts monitoring and the node manager, which then launches the IC replica.
+  </Step>
+</Steps>
+
+## Security Features
+
+GuestOS implements multiple layers of security:
+
+### Encryption
+
+- **Var Partitions**: Encrypted to protect intermediate data and logs
+- **Store Partition**: Encrypted LVM for all IC payload data
+- **Block Device Protection**: Both confidentiality and integrity protection
+
+### Integrity Protection
+
+- **dm-verity**: Root filesystem integrity verification
+- **Signed Bootloader**: EFI firmware verifies GRUB signature
+- **Signed Boot Files**: GRUB verifies kernel and initrd signatures
+- **Read-only Root**: Immutable root filesystem prevents tampering
+
+### SELinux
+
+GuestOS includes a custom SELinux policy that enforces mandatory access control. The policy restricts:
+- Process capabilities
+- File access permissions
+- Network operations
+- Inter-process communication
+
+<Note>
+For detailed information about the SELinux implementation, refer to the SELinux documentation in `ic-os/guestos/docs/SELinux.adoc`.
+</Note>
+
+## Communication with HostOS
+
+GuestOS communicates with HostOS through VM sockets (VSOCK), a controlled interface that maintains isolation:
+
+<Warning>
+To maintain security isolation, GuestOS is restricted to strictly defined VSOCK commands. All commands are initiated from GuestOS, not HostOS.
+</Warning>
+
+Available VSOCK commands allow GuestOS to:
+- Request system upgrades
+- Query HostOS status
+- Coordinate partition switching
+- Request controlled host operations
+
+For complete details, see the [vsock README](file:///home/daytona/workspace/source/rs/ic_os/vsock/README.md).
+
+## System Users
+
+GuestOS includes several specialized user accounts:
+
+| Username | Home Directory | Description |
+|----------|----------------|-------------|
+| `backup` | `/var/lib/backup` | Backup subnet state operations |
+| `readonly` | `/var/lib/readonly` | Read-only administrative access |
+| `admin` | `/var/lib/admin` | Administrative access for Node Providers |
+| `node_exporter` | `/home/node_exporter` | Node exporter service account |
+
+<Info>
+For development images (`dev` target), the root account is enabled with username and password both set to `root`. Production images (`prod` target) do not have console access.
+</Info>
+
+## Running GuestOS Locally
+
+For development and testing, you can run GuestOS directly with QEMU:
+
+<Note>
+Requires QEMU with `qemu-system` and `qemu-kvm` installed.
+</Note>
+
+```bash
+qemu-system-x86_64 \
+  -machine type=q35,accel=kvm \
+  -enable-kvm \
+  -nographic \
+  -m 4G \
+  -bios /usr/share/ovmf/OVMF.fd \
+  -device vhost-vsock-pci,guest-cid=$$CID \
+  -drive file=disk.img,format=raw,if=virtio \
+  -netdev user,id=user.0,hostfwd=tcp::2222-:22 \
+  -device virtio-net,netdev=user.0
+```
+
+<Tip>
+Press `Ctrl-A` followed by `x` to exit the QEMU console.
+</Tip>
+
+## Configuration
+
+GuestOS configuration is managed through several mechanisms:
+
+### Bootstrap Configuration
+
+Initial configuration provided via `ic-bootstrap.tar` on the configuration media:
+- Network settings
+- SSH keys
+- Initial IC registry configuration
+- Node identity and cryptographic material
+
+### Runtime Configuration
+
+Generated at boot time from templates:
+- `ic.json.template` → `ic.json`: Main IC configuration
+- Network configuration from config partition
+- NFTables rules from IC registry
+
+### Config Partition
+
+Small partition (100 MB) preserved across upgrades containing:
+- Machine ID (stable system identifier)
+- SSH host keys (stable across upgrades)
+- Node exporter TLS certificates
+- Bootstrap configuration
+
+## Performance Benchmarking
+
+GuestOS performance is continuously monitored through automated benchmarks:
+
+- Runs daily on bare metal hardware
+- Executed as part of `Bazel Test Bare Metal` CI job
+- Results tracked over time to detect regressions
+- Tests real-world workloads on actual hardware
+
+For manual benchmarking instructions, see `ic-os/dev-tools/bare_metal_deployment/README.md`.
+
+## Development
+
+The GuestOS system logic and Ubuntu configuration is contained in the `ic-os/components/` directory.
+
+<CardGroup cols={2}>
+  <Card title="Adding Files" icon="plus">
+    Add files to `components/` directory and enumerate in `components/guestos.bzl`
+  </Card>
+  <Card title="Removing Files" icon="minus">
+    Remove from `components/` and remove enumeration from all relevant `.bzl` files
+  </Card>
+  <Card title="System Services" icon="gear">
+    Add systemd service files to start and control your services
+  </Card>
+  <Card title="Late Injection" icon="syringe">
+    Some binaries injected after rootfs construction (see `defs.bzl`)
+  </Card>
+</CardGroup>
+
+For detailed development instructions, see the [components README](file:///home/daytona/workspace/source/ic-os/components/README.adoc).
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Build GuestOS" icon="hammer" href="/ic-os/building">
+    Learn how to build GuestOS images
+  </Card>
+  <Card title="HostOS" icon="server" href="/ic-os/hostos">
+    Understand the host operating system
+  </Card>
+</CardGroup>

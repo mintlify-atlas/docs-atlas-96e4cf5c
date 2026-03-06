@@ -1,0 +1,149 @@
+---
+title: System Requirements
+description: Hardware and software requirements for building the Internet Computer Protocol
+---
+
+Before building the Internet Computer Protocol from source, ensure your system meets the following requirements.
+
+## Hardware Requirements
+
+<Card title="Minimum Specifications" icon="server">
+  Building the IC protocol requires substantial system resources for compilation and testing.
+</Card>
+
+### CPU
+- **Architecture**: x86-64 based system
+- Intel or AMD 64-bit processor
+
+### Memory
+- **Minimum**: 16 GB RAM/SWAP
+- More memory will improve build performance
+
+### Disk Space
+- **Minimum**: 100 GB available disk space
+- Additional space recommended for caching and artifacts
+- Build artifacts are stored in the `artifacts/` directory
+
+<Warning>
+  The repro-check verification script requires approximately 100 GB of free disk space in `$HOME` or the specified cache directory.
+</Warning>
+
+## Operating System
+
+### Supported Platforms
+
+<CardGroup cols={2}>
+  <Card title="Ubuntu 22.04 or newer" icon="ubuntu">
+    Primary supported platform for building IC
+  </Card>
+  <Card title="x86-64 Architecture" icon="microchip">
+    Required for all builds
+  </Card>
+</CardGroup>
+
+<Info>
+  While other Linux distributions may work, Ubuntu 22.04+ is the officially supported and tested platform.
+</Info>
+
+## Software Dependencies
+
+### Required Software
+
+The following tools must be installed on your system:
+
+#### Podman
+
+[Podman](https://podman.io/getting-started/installation) is required for containerized builds.
+
+```bash
+sudo apt-get update
+sudo apt-get install -y podman
+```
+
+#### Git
+
+Git is required for cloning the repository and version control.
+
+```bash
+sudo apt-get install -y git
+```
+
+#### Python 3
+
+Python 3.x is required for running verification scripts.
+
+```bash
+sudo apt-get install -y python3
+```
+
+#### curl
+
+Required for downloading artifacts and verification.
+
+```bash
+sudo apt-get install -y curl
+```
+
+### Build Tools
+
+#### Bazel
+
+The IC protocol uses **Bazel 8.6.0** as its build system.
+
+<Note>
+  The exact Bazel version is specified in the `.bazelversion` file in the repository root.
+</Note>
+
+For Bazel installation instructions, see the [official Bazel documentation](https://bazel.build/install).
+
+## Verification Requirements
+
+For verifying release reproducibility:
+
+<Steps>
+  <Step title="Operating System">
+    Ubuntu 22.04 or higher
+  </Step>
+  <Step title="Disk Space">
+    About 100 GB of free disk space in `$HOME` (or specified cache directory)
+  </Step>
+  <Step title="Dependencies">
+    - Python 3.x
+    - curl
+    - git
+    - podman
+  </Step>
+</Steps>
+
+## Containerized Build Environment
+
+If you don't want to install all dependencies directly on your system, you can use the containerized build environment:
+
+```bash
+./ci/container/container-run.sh
+```
+
+This script automatically sets up a container with all required dependencies pre-configured.
+
+<Tip>
+  Using the containerized environment is recommended for consistent builds and to avoid dependency conflicts.
+</Tip>
+
+## Environment Configuration
+
+For building IC-OS images locally, additional environment configuration is required. The required packages are defined in:
+
+```
+ic/ci/container/Dockerfile
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building the IC" icon="hammer" href="/getting-started/building">
+    Learn how to build the Internet Computer Protocol
+  </Card>
+  <Card title="Verifying Releases" icon="shield-check" href="/getting-started/verifying-releases">
+    Verify build reproducibility of IC-OS images
+  </Card>
+</CardGroup>

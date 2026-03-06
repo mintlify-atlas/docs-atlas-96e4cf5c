@@ -1,0 +1,405 @@
+---
+title: PocketIC
+description: A comprehensive canister testing library for the Internet Computer
+---
+
+PocketIC is a local canister testing solution for the Internet Computer. It provides a Rust library that works with the PocketIC server, allowing you to interact with local IC instances and test your canisters with native Rust functions.
+
+## Overview
+
+PocketIC makes testing Internet Computer canisters as simple as calling Rust functions. It provides a full local IC environment without requiring a live network connection.
+
+<Info>
+**Package**: `pocket-ic` v12.0.0  
+**Repository**: [dfinity/ic](https://github.com/dfinity/ic)  
+**Documentation**: [docs.rs/pocket-ic](https://docs.rs/pocket-ic/)
+</Info>
+
+## Installation
+
+### 1. Install the PocketIC Rust Library
+
+Add PocketIC to your project:
+
+```bash
+cargo add pocket-ic
+```
+
+Or add it to your `Cargo.toml`:
+
+```toml
+[dev-dependencies]
+pocket-ic = "12.0.0"
+```
+
+### 2. Download PocketIC Server
+
+Download the compatible PocketIC server binary:
+
+1. Visit the [PocketIC releases](https://github.com/dfinity/pocketic/releases)
+2. Download the binary compatible with your library version (check [compatibility matrix](https://docs.google.com/document/d/1VYmHUTjrgbzRHtsAyRrI5cj-gWGs7ktTnutPvUMJioU))
+3. Extract the downloaded file
+4. On Unix systems, make it executable: `chmod +x pocket-ic`
+
+### 3. Configure Server Path
+
+Specify the server binary location using either:
+
+**Environment variable:**
+```bash
+export POCKET_IC_BIN=/path/to/pocket-ic
+```
+
+**Or in code:**
+```rust
+use pocket_ic::PocketIcBuilder;
+
+let pic = PocketIcBuilder::new()
+    .with_server_binary("/path/to/pocket-ic")
+    .build();
+```
+
+## Quick Start
+
+Here's a simple example testing a counter canister:
+
+```rust
+use candid::{Principal, encode_one};
+use pocket_ic::PocketIc;
+
+// 2T cycles
+const INIT_CYCLES: u128 = 2_000_000_000_000;
+
+#[test]
+fn test_counter_canister() {
+    let pic = PocketIc::new();
+
+    // Create a canister and charge it with 2T cycles.
+    let canister_id = pic.create_canister();
+    pic.add_cycles(canister_id, INIT_CYCLES);
+
+    // Install the counter canister wasm file on the canister.
+    let counter_wasm = std::fs::read("counter.wasm").unwrap();
+    pic.install_canister(canister_id, counter_wasm, vec![], None);
+
+    // Make some calls to the canister.
+    let reply = call_counter_can(&pic, canister_id, "read");
+    assert_eq!(reply, vec![0, 0, 0, 0]);
+    
+    let reply = call_counter_can(&pic, canister_id, "write");
+    assert_eq!(reply, vec![1, 0, 0, 0]);
+    
+    let reply = call_counter_can(&pic, canister_id, "write");
+    assert_eq!(reply, vec![2, 0, 0, 0]);
+    
+    let reply = call_counter_can(&pic, canister_id, "read");
+    assert_eq!(reply, vec![2, 0, 0, 0]);
+}
+
+fn call_counter_can(pic: &PocketIc, canister_id: Principal, method: &str) -> Vec<u8> {
+    pic.update_call(
+        canister_id,
+        Principal::anonymous(),
+        method,
+        encode_one(()).unwrap(),
+    )
+    .expect("Failed to call counter canister")
+}
+```
+
+## Core Features
+
+### Canister Management
+
+#### Create and Install Canisters
+
+```rust
+use pocket_ic::PocketIc;
+
+let pic = PocketIc::new();
+
+// Create a new canister
+let canister_id = pic.create_canister();
+
+// Add cycles
+pic.add_cycles(canister_id, 2_000_000_000_000);
+
+// Install WASM
+let wasm = std::fs::read("my_canister.wasm").unwrap();
+let init_args = vec![]; // Your init args here
+pic.install_canister(canister_id, wasm, init_args, None);
+```
+
+#### Upgrade Canisters
+
+```rust
+let new_wasm = std::fs::read("my_canister_v2.wasm").unwrap();
+let upgrade_args = vec![];
+pic.upgrade_canister(canister_id, new_wasm, upgrade_args, None)
+    .expect("Upgrade failed");
+```
+
+### Making Calls
+
+#### Update Calls
+
+```rust
+use candid::{encode_args, decode_one};
+
+// Make an update call
+let result = pic.update_call(
+    canister_id,
+    Principal::anonymous(),
+    "my_method",
+    encode_args((arg1, arg2)).unwrap(),
+)
+.expect("Call failed");
+
+// Decode the response
+let response: MyType = decode_one(&result).unwrap();
+```
+
+#### Query Calls
+
+```rust
+// Make a query call (read-only, faster)
+let result = pic.query_call(
+    canister_id,
+    Principal::anonymous(),
+    "get_value",
+    encode_args(()).unwrap(),
+)
+.expect("Query failed");
+```
+
+### Time Control
+
+```rust
+use std::time::Duration;
+
+// Get current time
+let now = pic.get_time();
+
+// Advance time by 1 hour
+pic.advance_time(Duration::from_secs(3600));
+
+// Set specific time
+use std::time::SystemTime;
+pic.set_time(SystemTime::now());
+```
+
+### Subnet Management
+
+```rust
+use pocket_ic::{PocketIcBuilder, common::rest::SubnetKind};
+
+// Create instance with multiple subnets
+let pic = PocketIcBuilder::new()
+    .with_application_subnet()
+    .with_system_subnet()
+    .with_nns_subnet()
+    .build();
+```
+
+## Testing Workflows
+
+### Integration Testing
+
+Structure your tests to test canister interactions:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pocket_ic::PocketIc;
+
+    fn setup() -> (PocketIc, Principal) {
+        let pic = PocketIc::new();
+        let canister_id = pic.create_canister();
+        pic.add_cycles(canister_id, 2_000_000_000_000);
+        
+        let wasm = std::fs::read("target/wasm32-unknown-unknown/release/my_canister.wasm")
+            .expect("Wasm file not found");
+        pic.install_canister(canister_id, wasm, vec![], None);
+        
+        (pic, canister_id)
+    }
+
+    #[test]
+    fn test_initialization() {
+        let (pic, canister_id) = setup();
+        // Test initialization logic
+    }
+
+    #[test]
+    fn test_state_changes() {
+        let (pic, canister_id) = setup();
+        // Test state modifications
+    }
+}
+```
+
+### Multi-Canister Testing
+
+Test interactions between multiple canisters:
+
+```rust
+#[test]
+fn test_canister_to_canister_calls() {
+    let pic = PocketIc::new();
+    
+    // Deploy first canister
+    let canister_a = pic.create_canister();
+    pic.add_cycles(canister_a, 2_000_000_000_000);
+    let wasm_a = std::fs::read("canister_a.wasm").unwrap();
+    pic.install_canister(canister_a, wasm_a, vec![], None);
+    
+    // Deploy second canister
+    let canister_b = pic.create_canister();
+    pic.add_cycles(canister_b, 2_000_000_000_000);
+    let wasm_b = std::fs::read("canister_b.wasm").unwrap();
+    pic.install_canister(canister_b, wasm_b, vec![], None);
+    
+    // Test inter-canister call
+    let result = pic.update_call(
+        canister_a,
+        Principal::anonymous(),
+        "call_canister_b",
+        encode_args((canister_b,)).unwrap(),
+    )
+    .expect("Inter-canister call failed");
+}
+```
+
+### Testing Upgrades
+
+```rust
+#[test]
+fn test_stable_storage_persists() {
+    let pic = PocketIc::new();
+    let canister_id = pic.create_canister();
+    pic.add_cycles(canister_id, 2_000_000_000_000);
+    
+    // Install v1
+    let wasm_v1 = std::fs::read("canister_v1.wasm").unwrap();
+    pic.install_canister(canister_id, wasm_v1, vec![], None);
+    
+    // Set some state
+    pic.update_call(
+        canister_id,
+        Principal::anonymous(),
+        "set_value",
+        encode_args((42u64,)).unwrap(),
+    ).unwrap();
+    
+    // Upgrade to v2
+    let wasm_v2 = std::fs::read("canister_v2.wasm").unwrap();
+    pic.upgrade_canister(canister_id, wasm_v2, vec![], None).unwrap();
+    
+    // Verify state persisted
+    let result = pic.query_call(
+        canister_id,
+        Principal::anonymous(),
+        "get_value",
+        encode_args(()).unwrap(),
+    ).unwrap();
+    
+    let value: u64 = decode_one(&result).unwrap();
+    assert_eq!(value, 42);
+}
+```
+
+## Advanced Features
+
+### Custom Initialization
+
+```rust
+use pocket_ic::PocketIcBuilder;
+
+let pic = PocketIcBuilder::new()
+    .with_server_binary("/custom/path/pocket-ic")
+    .with_application_subnet()
+    .build();
+```
+
+### Tick Control
+
+```rust
+// Manually trigger IC rounds
+pic.tick();
+
+// Run multiple rounds
+for _ in 0..10 {
+    pic.tick();
+}
+```
+
+### Root Key Access
+
+```rust
+// Get the root subnet's public key (for testing)
+let root_key = pic.root_key();
+```
+
+## Best Practices
+
+<Check>Create a fresh `PocketIc` instance for each test to ensure isolation</Check>
+<Check>Use sufficient cycles (at least 2T) for canister operations</Check>
+<Check>Clean up test artifacts (WASM files) in your `.gitignore`</Check>
+<Check>Use `setup()` functions to reduce test boilerplate</Check>
+<Check>Test both success and error cases</Check>
+<Check>Test canister upgrades to ensure stable storage works correctly</Check>
+
+<Warning>
+Do not share PocketIC instances between test cases, as this can lead to unexpected state pollution and flaky tests.
+</Warning>
+
+## Examples and Resources
+
+### Minimal Example
+
+Check out the [ICP Hello World Rust](https://github.com/dfinity/icp-hello-world-rust/blob/main/README.md#testing-your-project) repository for a minimal PocketIC setup.
+
+### Integration Tests
+
+See [PocketIC integration tests](https://github.com/dfinity/ic/blob/master/packages/pocket-ic/tests/tests.rs) for simple but complete examples.
+
+### Large Test Suites
+
+Explore the [OpenChat integration tests](https://github.com/open-chat-labs/open-chat/tree/master/backend/integration_tests/src) for a production-scale test suite using PocketIC.
+
+<Note>
+The OpenChat test suite shares instances between tests for performance, which is not recommended for most use cases.
+</Note>
+
+## Troubleshooting
+
+### Server Binary Not Found
+
+If you see errors about the PocketIC server:
+
+1. Ensure the server binary is downloaded
+2. Set `POCKET_IC_BIN` environment variable
+3. Or use `PocketIcBuilder::with_server_binary()`
+4. Verify the binary is executable (Unix: `chmod +x pocket-ic`)
+
+### Version Compatibility
+
+Ensure your PocketIC library version matches a compatible server version. Check the [compatibility matrix](https://docs.google.com/document/d/1VYmHUTjrgbzRHtsAyRrI5cj-gWGs7ktTnutPvUMJioU).
+
+### Out of Cycles
+
+If calls fail with out-of-cycles errors, increase the cycles:
+
+```rust
+// Use more cycles for complex operations
+pic.add_cycles(canister_id, 10_000_000_000_000); // 10T cycles
+```
+
+## Learn More
+
+- [PocketIC Repository](https://github.com/dfinity/pocketic)
+- [API Documentation](https://docs.rs/pocket-ic/)
+- [How-to Guide](https://github.com/dfinity/ic/blob/master/packages/pocket-ic/HOWTO.md)
+- [Why PocketIC?](https://github.com/dfinity/pocketic#why-pocketic)
+- [Changelog](https://github.com/dfinity/ic/blob/master/packages/pocket-ic/CHANGELOG.md)

@@ -1,0 +1,428 @@
+---
+title: Testing
+description: Comprehensive testing infrastructure for the Internet Computer Protocol
+---
+
+The Internet Computer employs a multi-layered testing strategy including unit tests, integration tests, system tests, and property-based tests.
+
+## Testing Overview
+
+The testing infrastructure spans multiple directories and frameworks:
+
+- **Unit tests** - Co-located with source code in `rs/` subdirectories
+- **Integration tests** - In `rs/tests/` directory
+- **System tests** - End-to-end tests using the test driver framework
+- **PocketIC tests** - Canister testing using lightweight IC instances
+- **Property tests** - Randomized testing using proptest
+
+## Test Organization
+
+### Unit Tests
+
+Unit tests are co-located with the code they test, following Rust conventions:
+
+```rust
+// In rs/consensus/src/consensus.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_consensus_validation() {
+        // Test implementation
+    }
+}
+```
+
+Run unit tests with Cargo:
+
+```bash
+cargo test --package ic-consensus
+```
+
+### Integration Tests
+
+Integration tests live in the `rs/tests/` directory, organized by feature:
+
+```
+rs/tests/
+├── consensus/       # Consensus protocol tests
+├── execution/       # Execution environment tests
+├── networking/      # Network layer tests
+├── nns/            # Network Nervous System tests
+├── boundary_nodes/ # Boundary node tests
+├── crypto/         # Cryptography tests
+└── driver/         # Test driver framework
+```
+
+## System Tests
+
+System tests validate the entire IC stack in a realistic environment.
+
+### Test Driver Framework
+
+The system test driver executes setup and test functions in Rust, managing virtual machines through the **Farm** backend service:
+
+<CodeGroup>
+```rust Example System Test
+fn setup(test_env: TestEnv) {
+    InternetComputer::new()
+        .with_subnet(/* configuration */)
+        .setup_and_start(&test_env);
+}
+
+fn test(test_env: TestEnv) {
+    use crate::test_env_api::*;
+    let root_subnet = test_env
+        .topology_snapshot()
+        .root_subnet();
+    
+    // Test implementation
+}
+```
+</CodeGroup>
+
+### Running System Tests
+
+<Warning>
+  System tests require infrastructure only available within the DFINITY network. External contributors should run other test types.
+</Warning>
+
+#### Inside Dev Container
+
+```bash
+# Enter build container
+./ci/container/container-run.sh
+
+# Run specific test target
+bazel test --test_output=streamed //rs/tests:my_test_target
+
+# Or use ict tool
+ict test //rs/tests:my_test_target
+```
+
+#### With Pre-built Artifacts
+
+```bash
+# Requires commit to be built by CI/CD
+./run-system-tests.py --suite pre_master 2>&1 | tee system-test-logs.log
+```
+
+### Test Environment
+
+A **test environment** is a directory structure containing:
+
+- Infrastructure configuration (Farm URL, etc.)
+- Topology data for deployed Internet Computer instances
+- Test artifacts and logs
+
+#### Working Directory Structure
+
+```
+working_dir/
+└── 20220428_224049/          # Timestamp of test run
+    ├── api_test/              # POT (suite) name
+    │   ├── setup/             # Setup artifacts
+    │   │   ├── ic_prep/       # Initial registry data
+    │   │   └── test.log       # Setup logs
+    │   └── tests/
+    │       └── test_name/     # Individual test
+    │           ├── test.log
+    │           └── test_execution_result.json
+    └── system_env/            # Global environment
+```
+
+Each test inherits the setup environment but runs in isolation.
+
+## PocketIC Testing
+
+PocketIC provides lightweight, fast canister testing without requiring full IC infrastructure.
+
+### Overview
+
+[PocketIC](https://github.com/dfinity/pocketic) is a local canister testing solution that works with the PocketIC server to provide deterministic, fast test execution.
+
+<CardGroup cols={2}>
+  <Card title="Fast Execution" icon="bolt">
+    Tests run in milliseconds, not seconds
+  </Card>
+  <Card title="Deterministic" icon="check">
+    Reproducible test results
+  </Card>
+  <Card title="Rust Native" icon="rust">
+    First-class Rust API
+  </Card>
+  <Card title="Multi-Subnet" icon="network-wired">
+    Test cross-subnet calls
+  </Card>
+</CardGroup>
+
+### Quick Start
+
+<Steps>
+  <Step title="Download PocketIC Server">
+    Download the [PocketIC server](https://github.com/dfinity/pocketic) binary compatible with your library version.
+  </Step>
+  <Step title="Make Executable">
+    On UNIX systems: `chmod +x pocket-ic`
+  </Step>
+  <Step title="Configure Path">
+    Set `POCKET_IC_BIN` environment variable or use `PocketIcBuilder::with_server_binary()`
+  </Step>
+  <Step title="Add Dependency">
+    ```bash
+    cargo add pocket-ic
+    ```
+  </Step>
+</Steps>
+
+### Example Test
+
+<CodeGroup>
+```rust PocketIC Test Example
+use candid::{Principal, encode_one};
+use pocket_ic::PocketIc;
+
+const INIT_CYCLES: u128 = 2_000_000_000_000; // 2T cycles
+
+#[test]
+fn test_counter_canister() {
+    let pic = PocketIc::new();
+
+    // Create canister and add cycles
+    let canister_id = pic.create_canister();
+    pic.add_cycles(canister_id, INIT_CYCLES);
+
+    // Install canister
+    let wasm = std::fs::read("counter.wasm").unwrap();
+    pic.install_canister(canister_id, wasm, vec![], None);
+
+    // Test canister calls
+    let reply = call_counter(&pic, canister_id, "read");
+    assert_eq!(reply, vec![0, 0, 0, 0]);
+    
+    let reply = call_counter(&pic, canister_id, "write");
+    assert_eq!(reply, vec![1, 0, 0, 0]);
+}
+
+fn call_counter(pic: &PocketIc, canister_id: Principal, method: &str) -> Vec<u8> {
+    pic.update_call(
+        canister_id,
+        Principal::anonymous(),
+        method,
+        encode_one(()).unwrap(),
+    )
+    .expect("Failed to call counter canister")
+}
+```
+</CodeGroup>
+
+### Use Cases
+
+- **Canister logic testing** - Unit test individual canister functions
+- **Multi-canister scenarios** - Test inter-canister calls
+- **Upgrade testing** - Test canister upgrade logic
+- **State management** - Verify state persistence and stability
+
+## Consensus Test Framework
+
+The consensus test framework provides specialized testing for consensus-related functionality.
+
+### Framework Components
+
+Located in `rs/consensus/tests/framework/`, the framework includes:
+
+- Mock consensus components
+- Test utilities for DKG and threshold signatures
+- Integration test helpers
+
+### Consensus Integration Tests
+
+Consensus integration tests validate:
+
+- Block production and validation
+- Finalization behavior
+- Notarization processes
+- DKG and IDKG protocols
+- Chain key operations
+
+<CodeGroup>
+```rust Consensus Test Example
+// rs/consensus/tests/integration.rs
+#[test]
+fn test_consensus_produces_valid_blocks() {
+    // Setup consensus components
+    let mut test_environment = ConsensusTestEnvironment::new();
+    
+    // Produce blocks
+    test_environment.advance_rounds(10);
+    
+    // Validate consensus state
+    assert!(test_environment.verify_chain_validity());
+}
+```
+</CodeGroup>
+
+## Property-Based Testing
+
+Property-based tests use the [proptest](https://docs.rs/proptest/) framework to generate randomized test inputs:
+
+```rust
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn test_serialization_roundtrip(data: Vec<u8>) {
+        let serialized = serialize(&data);
+        let deserialized = deserialize(&serialized).unwrap();
+        prop_assert_eq!(data, deserialized);
+    }
+}
+```
+
+Property tests are found in files named `*proptests.rs` throughout the codebase.
+
+## Running Tests
+
+### Local Testing
+
+<Tabs>
+  <Tab title="Cargo">
+    ```bash
+    # Run all tests in workspace
+    cargo test
+
+    # Run tests for specific package
+    cargo test -p ic-consensus
+
+    # Run specific test
+    cargo test test_name
+
+    # Run with output
+    cargo test -- --nocapture
+    ```
+  </Tab>
+  <Tab title="Bazel">
+    ```bash
+    # Run all tests except system tests
+    bazel test //... --test_tag_filters=-system_test
+
+    # Run specific test target
+    bazel test //rs/consensus:consensus_test
+
+    # Run with streaming output
+    bazel test --test_output=streamed //rs/tests:my_test
+
+    # Run in dev container
+    ./ci/container/container-run.sh
+    bazel test //...
+    ```
+  </Tab>
+</Tabs>
+
+### Code Linting
+
+Before running tests, verify code quality:
+
+```bash
+# Run all linting checks
+./ci/scripts/rust-lint.sh
+
+# Or run individual tools
+cargo clippy --all-targets --all-features
+cargo fmt --check
+```
+
+### Coverage
+
+Generate code coverage reports:
+
+```bash
+./ci/scripts/bazel-coverage.sh
+```
+
+## Test Best Practices
+
+<AccordionGroup>
+  <Accordion title="Reproducibility">
+    - Use fixed RNG seeds or log random seeds
+    - Avoid dependencies on system time or external state
+    - Make tests deterministic and isolated
+  </Accordion>
+  
+  <Accordion title="Logging">
+    - Use test environment logging primitives, not `println!`
+    - Add ASCIIDOC descriptions at the beginning of test files
+    - Log relevant test parameters for debugging
+  </Accordion>
+  
+  <Accordion title="Organization">
+    - Place tests in appropriate subdirectories
+    - Update CODEOWNERS when adding new test directories
+    - Keep test names descriptive and consistent
+  </Accordion>
+  
+  <Accordion title="Performance">
+    - Keep unit tests fast (< 1 second)
+    - Use PocketIC for canister tests instead of full system tests
+    - Tag slow tests appropriately for CI filtering
+  </Accordion>
+</AccordionGroup>
+
+## Testing in CI/CD
+
+For external contributors:
+
+<Warning>
+  CI does not run automatically on PRs from external contributors for security reasons. Maintainers will manually trigger CI after review.
+</Warning>
+
+### Before Submitting PR
+
+<Checklist>
+  - [ ] Run tests locally: `cargo test`
+  - [ ] Run linting: `./ci/scripts/rust-lint.sh`
+  - [ ] Ensure Bazel builds: `bazel test //... --test_tag_filters=-system_test`
+  - [ ] Add tests for new functionality
+  - [ ] Update test documentation if needed
+</Checklist>
+
+## Specialized Test Types
+
+### Fuzz Testing
+
+Fuzz tests are located in `rs/fuzzers/` and use cargo-fuzz:
+
+```bash
+# Run fuzzer
+cargo fuzz run fuzzer_name
+```
+
+### Determinism Tests
+
+Validate deterministic execution in `rs/determinism_test/`.
+
+### Universal VM Tests
+
+System tests can run Docker containers in Universal VMs. Search for `UniversalVm::new` in the codebase for examples.
+
+<Note>
+  Universal VMs are created fresh for each test suite, requiring container images to be fetched each time.
+</Note>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Workspace Structure" icon="folder-tree" href="/development/workspace-structure">
+    Understand the monorepo organization
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Guidelines for contributing code and tests
+  </Card>
+  <Card title="PocketIC Documentation" icon="link" href="https://docs.rs/pocket-ic/">
+    Full API documentation for PocketIC
+  </Card>
+  <Card title="Testing Terminology" icon="book" href="https://www.notion.so/Testing-Terminology-8cc0735dfcd945959f8d47caedf058b5">
+    Comprehensive testing terminology guide
+  </Card>
+</CardGroup>

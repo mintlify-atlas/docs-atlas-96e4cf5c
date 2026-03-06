@@ -1,0 +1,251 @@
+---
+title: Workspace Structure
+description: Understanding the Internet Computer monorepo organization and architecture
+---
+
+The Internet Computer Protocol is developed as a large monorepo containing the Rust implementation of the replica, operating systems, tooling, and test infrastructure.
+
+## Monorepo Overview
+
+The repository follows a well-organized structure with clear separation of concerns:
+
+```
+ic/
+├── rs/              # Rust crates (core protocol implementation)
+├── packages/        # Published packages for external use
+├── ic-os/           # Operating system images (SetupOS, HostOS, GuestOS)
+├── bazel/           # Bazel build configuration
+├── ci/              # CI/CD scripts and infrastructure
+└── publish/         # Publishing and release tooling
+```
+
+## Core Directories
+
+### `rs/` - Rust Implementation
+
+The `rs/` directory contains all the replica's Rust code, organized into 60+ subdirectories representing different components of the Internet Computer Protocol.
+
+<AccordionGroup>
+  <Accordion title="Key Components">
+    - **consensus/** - Consensus protocol implementation including DKG, IDKG, and certification
+    - **execution_environment/** - Canister execution and WebAssembly runtime
+    - **crypto/** - Cryptographic primitives (threshold signatures, multi-signatures, TLS)
+    - **messaging/** - Cross-canister and cross-subnet messaging
+    - **bitcoin/** - Bitcoin integration (adapter, consensus, ckBTC minter)
+    - **ethereum/** - Ethereum integration and ckETH support
+    - **boundary_node/** - Boundary node services (rate limiting, routing)
+    - **http_endpoints/** - Public API and HTTP gateway
+    - **replica/** - Main replica binary
+    - **tests/** - System-level integration and end-to-end tests
+  </Accordion>
+</AccordionGroup>
+
+#### Building the Replica
+
+To build the core replica binary:
+
+```bash
+cd rs
+cargo build --release --bin replica
+```
+
+### `packages/` - Published Packages
+
+The `packages/` directory contains Rust crates intended for external publication on [crates.io](https://crates.io):
+
+- **pocket-ic/** - Local canister testing library
+- **ic-signature-verification/** - Signature verification utilities
+- **icrc-ledger-types/** - ICRC ledger type definitions
+- **ic-error-types/** - Error handling types
+- Cryptographic packages (ic-ed25519, ic-secp256k1, ic-secp256r1)
+
+<Note>
+  Packages can depend on one another and other published code, but **not** on internal code in the `rs/` directory.
+</Note>
+
+### `ic-os/` - Operating System Images
+
+IC-OS is an umbrella term for all operating systems within the IC ecosystem:
+
+<CardGroup cols={3}>
+  <Card title="SetupOS" icon="server">
+    Responsible for booting a new replica node and installing HostOS and GuestOS
+  </Card>
+  <Card title="HostOS" icon="computer">
+    Runs on the host machine and launches GuestOS in a virtual machine
+  </Card>
+  <Card title="GuestOS" icon="microchip">
+    Executes the core IC protocol inside a virtual machine
+  </Card>
+</CardGroup>
+
+Each OS has build targets:
+- **prod** - Production images (no console access)
+- **dev** - Development images (console access, default credentials: root/root)
+- Additional variants for GuestOS: dev-malicious, recovery
+
+#### Building IC-OS Images
+
+Build specific images using Bazel:
+
+```bash
+# Build GuestOS development image
+bazel build //ic-os/guestos/envs/dev/...
+
+# Build all images using containerized environment
+./ci/container/build-ic.sh -i
+
+# Build only binaries and canisters
+./ci/container/build-ic.sh -b -c
+```
+
+Built artifacts are located in `bazel-bin/ic-os/{setupos,hostos,guestos}/envs/<TARGET>/` and top-level `artifacts/` directory.
+
+## Build Systems
+
+### Cargo Workspace
+
+The repository uses a Cargo workspace for Rust dependency management. The workspace configuration is defined in the root `Cargo.toml`:
+
+<CodeGroup>
+```toml Cargo.toml (excerpt)
+[workspace]
+members = [
+    "packages/canlog",
+    "packages/pocket-ic",
+    "rs/artifact_pool",
+    "rs/consensus",
+    "rs/crypto",
+    "rs/execution_environment",
+    # ... 200+ members
+]
+
+[workspace.dependencies]
+# Centralized dependency version management
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.28", features = ["full"] }
+```
+</CodeGroup>
+
+<Tip>
+  When adding external crate dependencies, use the workspace configuration to maintain consistent versions across the entire monorepo.
+</Tip>
+
+### Bazel Build System
+
+The Internet Computer uses Bazel as its primary build system for reproducible, hermetic builds.
+
+#### Key Bazel Files
+
+- **WORKSPACE.bazel** - Legacy workspace configuration
+- **MODULE.bazel** - Modern Bazel modules and dependencies
+- **BUILD.bazel** - Build targets (600+ files throughout the repo)
+- **bazel/** - Build rules, macros, and toolchain configuration
+
+#### Common Bazel Commands
+
+```bash
+# Build all targets (excluding system tests)
+bazel build //...
+
+# Run unit and integration tests
+bazel test //... --test_tag_filters=-system_test
+
+# Build specific target
+bazel build //rs/replica
+
+# Build IC-OS images
+bazel build //ic-os/guestos/envs/prod/...
+```
+
+<Warning>
+  The repository contains over 600 BUILD.bazel files. Bazel provides caching and incremental builds for efficient development.
+</Warning>
+
+#### Bazel Configuration
+
+Key configuration files:
+- `.bazelrc` - Bazel runtime configuration
+- `.bazelversion` - Pinned Bazel version for reproducibility
+- `bazel/defs.bzl` - Custom build macros and rules
+
+## Additional Directories
+
+### `ci/` - Continuous Integration
+
+CI/CD infrastructure including:
+- **container/** - Docker containers for build environments
+- **scripts/** - Automated testing and linting scripts
+- GitHub Actions workflows (`.github/workflows/`)
+
+### `bin/` - Utility Scripts
+
+Helper scripts for development and operations.
+
+### `third_party/` - External Dependencies
+
+Vendored third-party code and tools.
+
+## Development Environment
+
+### System Requirements
+
+- **Architecture:** x86-64
+- **Memory:** Minimum 16 GB RAM/SWAP
+- **Disk:** 100 GB available space
+- **OS:** Ubuntu 22.04 or newer
+- **Container Runtime:** [Podman](https://podman.io)
+
+### Dev Container
+
+Use the provided dev container for consistent build environment:
+
+```bash
+# Enter dev container
+./ci/container/container-run.sh
+
+# Or use VS Code Dev Containers extension
+code --install-extension ms-vscode-remote.remote-containers
+```
+
+## Configuration Files
+
+### Code Quality
+
+- **rustfmt.toml** - Rust code formatting rules
+- **clippy.toml** - Clippy linter configuration
+- **.editorconfig** - Editor configuration for consistent style
+- **deny.toml** - Cargo-deny configuration for dependency auditing
+
+### Pre-commit Hooks
+
+- **.pre-commit-config.yaml** - Pre-commit hook configuration
+- **pre-commit/** - Custom pre-commit scripts
+
+## Navigation Tips
+
+<Steps>
+  <Step title="Find Components">
+    Use the `rs/` directory structure to locate protocol components. Each major feature has its own subdirectory.
+  </Step>
+  <Step title="Explore Tests">
+    Check `rs/tests/` for system-level tests and individual component directories for unit tests.
+  </Step>
+  <Step title="Review Documentation">
+    Look for README files in subdirectories for component-specific documentation.
+  </Step>
+  <Step title="Search Bazel Targets">
+    Use `bazel query` to explore build targets and dependencies.
+  </Step>
+</Steps>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Testing Guide" icon="flask" href="/development/testing">
+    Learn about the testing infrastructure and frameworks
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/development/contributing">
+    Guidelines for submitting contributions
+  </Card>
+</CardGroup>

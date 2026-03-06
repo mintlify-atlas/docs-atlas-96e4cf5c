@@ -1,0 +1,408 @@
+---
+title: "HostOS"
+description: "The host operating system that launches and manages GuestOS virtual machines"
+---
+
+## Introduction
+
+HostOS is the operating system running directly on the host machine hardware. Its primary responsibility is to launch and manage the GuestOS virtual machine using QEMU/libvirt.
+
+<Warning>
+HostOS is intentionally limited by design to not perform any trusted Internet Computer Protocol capabilities. All IC protocol operations (replica, orchestrator, etc.) run exclusively in GuestOS.
+</Warning>
+
+This minimal design reduces the attack surface and ensures that the critical IC operations are isolated within the GuestOS virtual machine.
+
+## Core Responsibilities
+
+HostOS has a focused set of responsibilities:
+
+<CardGroup cols={2}>
+  <Card title="VM Management" icon="server">
+    Launch and manage the GuestOS virtual machine using QEMU/libvirt
+  </Card>
+  <Card title="Hardware Access" icon="microchip">
+    Provide controlled hardware access to the GuestOS VM
+  </Card>
+  <Card title="Network Bridge" icon="network-wired">
+    Bridge networking between physical interfaces and VM
+  </Card>
+  <Card title="Monitoring" icon="chart-line">
+    Export host metrics via node_exporter
+  </Card>
+  <Card title="Remote Access" icon="terminal">
+    Provide SSH access for Node Providers/Technicians
+  </Card>
+  <Card title="Upgrades" icon="arrow-up">
+    Manage HostOS system upgrades
+  </Card>
+</CardGroup>
+
+## Disk Partitioning
+
+HostOS uses a sophisticated partitioning layout with both primary partitions and LVM (Logical Volume Manager):
+
+### Partition Schema
+
+```
+Primary Partitions          |  LVM (HostOS)                  |  LVM (GuestOS)
+----------------------------|--------------------------------|------------------
+EFI | Grub                  |  Config | Boot A | Root A | ... |  Config | ...
+```
+
+The system maintains separate A/B partitions for both HostOS and GuestOS, enabling zero-downtime upgrades.
+
+### Detailed Layout
+
+<Tabs>
+  <Tab title="Primary Partitions">
+    - **EFI** (100 MB): EFI System Partition for bootloader and UEFI data
+    - **Grub** (100 MB): GRUB bootloader configuration
+  </Tab>
+  
+  <Tab title="HostOS Volumes">
+    - **Config** (100 MB): Configuration files preserved across upgrades
+    - **Boot A** (1 GB): Boot partition for system A
+    - **Root A** (10 GB): Root filesystem for system A
+    - **Var A** (10 GB): Variable data for system A
+    - **Boot B** (1 GB): Boot partition for system B
+    - **Root B** (10 GB): Root filesystem for system B
+    - **Var B** (10 GB): Variable data for system B
+    - **Unallocated Reserve** (20 GB): Reserved space
+  </Tab>
+  
+  <Tab title="GuestOS Volumes">
+    Similar A/B structure with:
+    - Config, Boot A/B, Root A/B, Var A/B partitions
+    - **Empty** (100% FREE): Expandable space for GuestOS payload
+  </Tab>
+</Tabs>
+
+<Info>
+The majority of disk space is allocated to GuestOS, with only about 65 GB reserved for HostOS. This reflects HostOS's minimal role compared to the GuestOS workload.
+</Info>
+
+### Partition Configuration
+
+The exact partitioning layout is defined in:
+- `ic/ic-os/hostos/partitions.csv`
+- `ic/ic-os/hostos/volumes.csv`
+
+### Root Partition Characteristics
+
+- **Filesystem**: ext4
+- **Mount Options**: Read-only (`ro,errors=remount-ro`)
+- **fstab Entry**:
+  ```
+  /dev/rootfs     /      ext4    ro,errors=remount-ro   0       1
+  ```
+
+The read-only root partition prevents tampering and ensures system integrity.
+
+## Virtual Machine Management
+
+### QEMU/Libvirt Configuration
+
+HostOS uses libvirt XML format to configure virtual machines. The GuestOS VM configuration is created by code in `config::guest_vm_config`.
+
+<Note>
+**CPU Passthrough**: The GuestOS VM is configured with CPU passthrough, allowing direct access to physical CPU features and capabilities. This ensures optimal performance for IC protocol operations.
+</Note>
+
+### VM Features
+
+- **Virtualization**: KVM-accelerated QEMU
+- **CPU**: Passthrough mode for native performance
+- **Memory**: Configurable allocation
+- **Storage**: Virtual disk backed by LVM volumes
+- **Networking**: Bridged networking with physical interfaces
+- **VSOCK**: VM socket interface for controlled host communication
+
+## System Users
+
+HostOS includes several specialized user accounts in addition to standard Ubuntu users:
+
+| Username | Home Directory | Shell | Description |
+|----------|----------------|-------|-------------|
+| `backup` | `/var/lib/backup` | `/bin/bash` | Backup subnet state |
+| `readonly` | `/var/lib/readonly` | `/bin/bash` | Read-only admin access for Node Providers/Technicians |
+| `admin` | `/var/lib/admin` | `/bin/bash` | Full admin access for Node Providers/Technicians |
+| `node_exporter` | `/home/node_exporter` | `/usr/sbin/nologin` | Node exporter service account |
+
+<Tip>
+Node Providers and Node Technicians use the `readonly` and `admin` accounts to access the node for monitoring and maintenance.
+</Tip>
+
+## Firewall Configuration
+
+HostOS implements a restrictive firewall ruleset using NFTables:
+
+<Warning>
+The firewall rules are hard-coded into the disk image. Updating the rules requires proposing and blessing a new disk image.
+</Warning>
+
+The ruleset is defined in `nftables.conf`.
+
+### Input Rules (Open Ports)
+
+<Tabs>
+  <Tab title="IPv4">
+    | Protocol | Port | Source | Description |
+    |----------|------|--------|-------------|
+    | TCP | 22 | RFC 1918 (private networks) | OpenSSH |
+    | UDP | 67 | RFC 1918 (private networks) | DHCP |
+  </Tab>
+  
+  <Tab title="IPv6">
+    | Protocol | Port | Source | Description |
+    |----------|------|--------|-------------|
+    | TCP | 22 | Delegated IPv6 subnets | OpenSSH |
+    | TCP | 9100 | Delegated IPv6 subnets | node_exporter |
+    | TCP | 19531 | Delegated IPv6 subnets | systemd-journal-gatewayd |
+  </Tab>
+</Tabs>
+
+<Info>
+IPv6 access is restricted to delegated subnets registered in the IC registry, providing additional security.
+</Info>
+
+### Output Rules (Allowed Destinations)
+
+| Protocol | Port | Destination | Description |
+|----------|------|-------------|-------------|
+| TCP | 53 | Any | DNS |
+| UDP | 53 | Any | DNS |
+| UDP | 123 | Any | NTP (time synchronization) |
+| TCP | 80 | Any | HTTP (download update images) |
+| TCP | 443 | Any | HTTPS (download update images) |
+
+<Note>
+Outbound connections are limited to essential services: DNS resolution, time synchronization, and downloading system updates.
+</Note>
+
+## VSOCK Interface
+
+The VSOCK (VM Socket) interface enables controlled communication between GuestOS and HostOS while maintaining isolation.
+
+### Design Principles
+
+<AccordionGroup>
+  <Accordion title="Secure Isolation">
+    VSOCK provides a controlled environment for GuestOS to communicate with HostOS while maintaining the highest level of isolation between the two operating systems.
+  </Accordion>
+  
+  <Accordion title="Guest-Initiated Only">
+    All VSOCK commands are initiated from GuestOS. HostOS cannot initiate commands to GuestOS, preventing unauthorized control.
+  </Accordion>
+  
+  <Accordion title="Strictly Defined Commands">
+    GuestOS is restricted to a limited set of predefined commands, each carefully designed to maintain security.
+  </Accordion>
+</AccordionGroup>
+
+### Available Commands
+
+GuestOS can request HostOS to perform specific operations such as:
+- System upgrade coordination
+- Status queries
+- Partition switching for upgrades
+- Controlled hardware operations
+
+<Tip>
+For a complete list of VSOCK commands and detailed documentation, see the [vsock README](file:///home/daytona/workspace/source/rs/ic_os/vsock/README.md).
+</Tip>
+
+## Networking
+
+HostOS manages networking for both itself and the GuestOS VM:
+
+### Physical Interfaces
+
+- Direct access to physical network adapters
+- IPv4 configuration via DHCP (RFC 1918 addresses)
+- IPv6 configuration from delegated subnets
+
+### Virtual Networking
+
+- Bridge between physical interfaces and GuestOS VM
+- NAT or bridged mode depending on configuration
+- Isolated network namespaces for security
+
+### DNS and Time
+
+- DNS resolution for updates and maintenance
+- NTP time synchronization for accurate timestamps
+- Critical for distributed consensus in GuestOS
+
+## Monitoring and Observability
+
+HostOS exports host metrics through Prometheus node_exporter:
+
+- **Service**: `node_exporter.service`
+- **Port**: 9100 (IPv6 only, restricted to IC subnets)
+- **Metrics**: Hardware health, resource utilization, system status
+- **TLS**: Secured with TLS certificates
+
+### Available Metrics
+
+- CPU usage and temperature
+- Memory utilization
+- Disk I/O and space
+- Network throughput and errors
+- System load and uptime
+
+## Upgrades
+
+HostOS uses the A/B partition scheme for zero-downtime upgrades:
+
+### Upgrade Process
+
+<Steps>
+  <Step title="Download">
+    HostOS downloads the new system image via HTTPS
+  </Step>
+  
+  <Step title="Install">
+    New image is written to the inactive partition set (A or B)
+  </Step>
+  
+  <Step title="Verify">
+    Image integrity and signatures are verified
+  </Step>
+  
+  <Step title="Switch">
+    GRUB configuration updated to boot from new partition
+  </Step>
+  
+  <Step title="Reboot">
+    System reboots into the newly upgraded partition
+  </Step>
+  
+  <Step title="Rollback">
+    If upgrade fails, system automatically rolls back to previous partition
+  </Step>
+</Steps>
+
+<Warning>
+HostOS upgrades require a reboot. GuestOS is shut down gracefully before the HostOS reboot.
+</Warning>
+
+## Security Considerations
+
+### Minimal Attack Surface
+
+HostOS is deliberately minimal:
+- Few installed packages
+- Limited running services
+- No IC protocol operations
+- Restrictive firewall rules
+
+### Access Control
+
+- SSH access restricted by source IP
+- IPv4: Only RFC 1918 private networks
+- IPv6: Only delegated IC subnets
+- Separate `readonly` and `admin` accounts
+
+### System Integrity
+
+- Read-only root filesystem
+- Signed boot components
+- Verified upgrades
+- A/B partitioning for safe rollback
+
+## Development
+
+The HostOS system configuration is in the `ic-os/components/` directory.
+
+### Adding Files to HostOS
+
+1. Add files to `components/` directory
+2. Enumerate each file in `components/hostos.bzl`
+3. Add systemd service files if needed
+
+### Removing Files from HostOS
+
+1. Remove files from `components/` directory
+2. Remove enumeration from `components/hostos.bzl`
+3. Remove from any other `.bzl` files that reference them
+
+<Note>
+Some binaries are injected late in the build process after rootfs construction. See `ic-os/hostos/defs.bzl` for details.
+</Note>
+
+## Troubleshooting
+
+### Accessing HostOS
+
+Connect via SSH using the `admin` or `readonly` account:
+
+```bash
+ssh admin@<node-ipv6-address>
+```
+
+### Checking VM Status
+
+View GuestOS VM status:
+
+```bash
+sudo virsh list --all
+sudo virsh dominfo <vm-name>
+```
+
+### Viewing Logs
+
+HostOS uses systemd for logging:
+
+```bash
+# View HostOS logs
+journalctl -b
+
+# View specific service logs
+journalctl -u <service-name>
+
+# View GuestOS console logs
+sudo virsh console <vm-name>
+```
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="GuestOS VM not starting">
+    Check:
+    - Libvirt service status: `systemctl status libvirtd`
+    - VM configuration: `virsh dumpxml <vm-name>`
+    - Available resources: `free -h` and `df -h`
+  </Accordion>
+  
+  <Accordion title="Network connectivity issues">
+    Check:
+    - Physical interface status: `ip link`
+    - Bridge configuration: `ip addr show`
+    - Firewall rules: `nft list ruleset`
+  </Accordion>
+  
+  <Accordion title="Cannot SSH to HostOS">
+    Verify:
+    - Source IP is in allowed range (RFC 1918 or IC subnet)
+    - SSH service is running: `systemctl status sshd`
+    - Firewall allows connections
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Build HostOS" icon="hammer" href="/ic-os/building">
+    Learn how to build HostOS images
+  </Card>
+  <Card title="GuestOS" icon="microchip" href="/ic-os/guestos">
+    Understand the guest operating system
+  </Card>
+  <Card title="SetupOS" icon="download" href="/ic-os/setupos">
+    Learn about initial node setup
+  </Card>
+  <Card title="IC-OS Overview" icon="book" href="/ic-os/overview">
+    Return to IC-OS overview
+  </Card>
+</CardGroup>
